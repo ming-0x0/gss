@@ -19,7 +19,7 @@ COMPOSE_FILES="-f ${COMPOSE_DIR}/docker-compose.yml -f ${COMPOSE_DIR}/docker-com
 case $COMMAND in
     up)
         echo "Starting local containers..."
-        docker compose --env-file .env $COMPOSE_FILES up -d
+        docker compose --env-file .env $COMPOSE_FILES up -d --build
         checkResult $?
         ;;
     down)
@@ -30,7 +30,7 @@ case $COMMAND in
     *)
         echo "Restarting local containers (down then up)..."
         docker compose --env-file .env $COMPOSE_FILES down
-        docker compose --env-file .env $COMPOSE_FILES up -d
+        docker compose --env-file .env $COMPOSE_FILES up -d --build
         checkResult $?
         ;;
 esac
