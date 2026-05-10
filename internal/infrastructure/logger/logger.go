@@ -158,46 +158,46 @@ func (l *Logger) log(ctx context.Context, level Level, msg string, keyVals ...an
 	l.Log(ctx, slogLevel, msg, attrs...)
 }
 
-func (l *Logger) Fatal(msg string, attrs ...any) {
-	l.log(background, Fatal, msg, attrs...)
+func (l *Logger) Fatal(msg string, keyVals ...any) {
+	l.log(background, Fatal, msg, keyVals...)
 	os.Exit(1)
 }
 
-func (l *Logger) FatalContext(ctx context.Context, msg string, attrs ...any) {
-	l.log(ctx, Fatal, msg, attrs...)
+func (l *Logger) FatalContext(ctx context.Context, msg string, keyVals ...any) {
+	l.log(ctx, Fatal, msg, keyVals...)
 	os.Exit(1)
 }
 
-func (l *Logger) Error(msg string, attrs ...any) {
-	l.log(background, Error, msg, attrs...)
+func (l *Logger) Error(msg string, keyVals ...any) {
+	l.log(background, Error, msg, keyVals...)
 }
 
-func (l *Logger) ErrorContext(ctx context.Context, msg string, attrs ...any) {
-	l.log(ctx, Error, msg, attrs...)
+func (l *Logger) ErrorContext(ctx context.Context, msg string, keyVals ...any) {
+	l.log(ctx, Error, msg, keyVals...)
 }
 
-func (l *Logger) Warn(msg string, attrs ...any) {
-	l.log(background, Warn, msg, attrs...)
+func (l *Logger) Warn(msg string, keyVals ...any) {
+	l.log(background, Warn, msg, keyVals...)
 }
 
-func (l *Logger) WarnContext(ctx context.Context, msg string, attrs ...any) {
-	l.log(ctx, Warn, msg, attrs...)
+func (l *Logger) WarnContext(ctx context.Context, msg string, keyVals ...any) {
+	l.log(ctx, Warn, msg, keyVals...)
 }
 
-func (l *Logger) Info(msg string, attrs ...any) {
-	l.log(background, Info, msg, attrs...)
+func (l *Logger) Info(msg string, keyVals ...any) {
+	l.log(background, Info, msg, keyVals...)
 }
 
-func (l *Logger) InfoContext(ctx context.Context, msg string, attrs ...any) {
-	l.log(ctx, Info, msg, attrs...)
+func (l *Logger) InfoContext(ctx context.Context, msg string, keyVals ...any) {
+	l.log(ctx, Info, msg, keyVals...)
 }
 
-func (l *Logger) Debug(msg string, attrs ...any) {
-	l.log(background, Debug, msg, attrs...)
+func (l *Logger) Debug(msg string, keyVals ...any) {
+	l.log(background, Debug, msg, keyVals...)
 }
 
-func (l *Logger) DebugContext(ctx context.Context, msg string, attrs ...any) {
-	l.log(ctx, Debug, msg, attrs...)
+func (l *Logger) DebugContext(ctx context.Context, msg string, keyVals ...any) {
+	l.log(ctx, Debug, msg, keyVals...)
 }
 
 func (l *Logger) With(keyVals ...any) *Logger {

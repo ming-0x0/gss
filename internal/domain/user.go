@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"time"
 
 	"github.com/uptrace/bun"
 )
@@ -15,9 +14,8 @@ type UserRepositoryInterface interface {
 
 type User struct {
 	bun.BaseModel `bun:"table:users,alias:u"`
-	ID            int       `bun:"id,pk,autoincrement"`
-	Email         string    `bun:"email,notnull,unique"`
-	Password      string    `bun:"password,notnull"`
-	CreatedAt     time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
-	UpdatedAt     time.Time `bun:"updated_at,nullzero,notnull,default:current_timestamp"`
+	ID            int    `bun:"id,pk,autoincrement"`
+	Email         string `bun:"email,notnull,unique"`
+	Password      string `bun:"password,notnull"`
+	TimestampWithDeletedAt
 }
