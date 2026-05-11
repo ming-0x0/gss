@@ -6,14 +6,17 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          cpus: "1.0"
+          memory: 2G
         reservations:
-          memory: 512M
+          cpus: "0.5"
+          memory: 1G
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+        compress: "true"
 
   minio:
     restart: always
@@ -22,11 +25,14 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "0.50"
           memory: 512M
         reservations:
+          cpus: "0.25"
           memory: 256M
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+        compress: "true"

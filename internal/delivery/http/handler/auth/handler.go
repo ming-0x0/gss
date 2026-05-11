@@ -1,9 +1,8 @@
 package auth
 
 import (
-	"gss/internal/delivery/http/handler"
-
 	"gss/internal/delivery/http/dto"
+	"gss/internal/delivery/http/handler"
 	"gss/internal/domain"
 	"gss/internal/infrastructure/logger"
 	"net/http"
@@ -45,4 +44,3 @@ func (h *Handler) RegisterRoutes(r ginopenapi.Router) {
 		option.Response(http.StatusOK, new(dto.LoginResponse)),
 	)
 }
-

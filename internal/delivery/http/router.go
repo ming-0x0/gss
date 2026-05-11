@@ -2,6 +2,9 @@ package http
 
 import (
 	"gss/internal/delivery/http/handler/auth"
+	"gss/internal/delivery/http/middleware"
+	"gss/internal/infrastructure/logger"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/oaswrap/spec/adapter/ginopenapi"
@@ -14,9 +17,17 @@ type Router struct {
 
 func NewRouter(
 	authHandler *auth.Handler,
+	log *logger.Logger,
 	version string,
 ) *Router {
-	engine := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+	engine := gin.New()
+
+	// Global middleware
+	engine.Use(
+		middleware.Recovery(log),
+		middleware.Logger(log),
+	)
 
 	router := &Router{engine: engine}
 	router.registerRoutes(authHandler, version)
@@ -28,7 +39,7 @@ func (r *Router) registerRoutes(
 	authHandler *auth.Handler,
 	version string,
 ) {
-	router := ginopenapi.NewRouter(
+	oaRouter := ginopenapi.NewRouter(
 		r.engine,
 		option.WithSwaggerUI(),
 		option.WithTitle("GSS"),
@@ -36,10 +47,11 @@ func (r *Router) registerRoutes(
 		option.WithSecurity("bearerAuth", option.SecurityHTTPBearer("Bearer")),
 	)
 
-	api := router.Group("/api")
+	api := oaRouter.Group("/api")
 	authHandler.RegisterRoutes(api)
 }
 
-func (r *Router) Run(addr string) error {
-	return r.engine.Run(addr)
+// Handler returns the underlying http.Handler for use with net/http server.
+func (r *Router) Handler() http.Handler {
+	return r.engine
 }
