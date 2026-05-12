@@ -28,10 +28,10 @@ type App struct {
 }
 
 func New(
+	version string,
 	cfg *configs.Config,
 	logger *logger.Logger,
 ) (*App, error) {
-	// 1. Database
 	mysqlDB, err := mysql.New(
 		mysql.WithDSN(cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Database),
 		mysql.WithMaxIdleConns(cfg.MySQL.MaxIdleConns),
@@ -43,21 +43,19 @@ func New(
 		return nil, err
 	}
 
-	// 2. ORM
-	ormDB, err := orm.NewDB(mysqlDB, "mysql")
+	db, err := orm.NewDB(mysqlDB, "mysql")
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Handlers & Repositories
-	baseHandler := handler.NewHandler(cfg.Logger.Level)
-	userRepo := repository.NewUserRepository(ormDB, logger)
-	authHandler := auth.NewHandler(baseHandler, userRepo, 10*time.Second, logger)
+	userRepo := repository.NewUserRepository(db, logger)
 
-	// 4. Router
+	baseHandler := handler.NewHandler(cfg.Logger.Level)
+	authHandler := auth.NewHandler(baseHandler, userRepo, logger)
+
 	router := deliveryHTTP.NewRouter(
 		logger,
-		"v1",
+		version,
 		authHandler,
 	)
 

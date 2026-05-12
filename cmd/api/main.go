@@ -7,6 +7,8 @@ import (
 	"gss/pkg/timezone"
 )
 
+var VERSION string
+
 func main() {
 	timezone.SetTimeZoneICT()
 
@@ -21,7 +23,7 @@ func main() {
 		logger.WithLevel(cfg.Logger.Level),
 	)
 
-	app, err := app.New(cfg, logger)
+	app, err := app.New(VERSION, cfg, logger)
 	if err != nil {
 		logger.Fatal("An error happened while creating the app", "err", err)
 	}
