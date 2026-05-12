@@ -8,7 +8,6 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `mapstructure:",squash"`
 	Logger LoggerConfig `mapstructure:",squash"`
 	MySQL  MySQLConfig  `mapstructure:",squash"`
 }

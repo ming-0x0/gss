@@ -1,7 +1,6 @@
 package http
 
 import (
-	"gss/internal/delivery/http/handler/auth"
 	"gss/internal/delivery/http/middleware"
 	"gss/internal/infrastructure/logger"
 	"net/http"
@@ -11,16 +10,19 @@ import (
 	"github.com/oaswrap/spec/option"
 )
 
+type router interface {
+	RegisterRoutes(r ginopenapi.Router)
+}
+
 type Router struct {
 	engine *gin.Engine
 }
 
 func NewRouter(
-	authHandler *auth.Handler,
 	log *logger.Logger,
 	version string,
+	routes ...router,
 ) *Router {
-	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 
 	// Global middleware
@@ -29,26 +31,20 @@ func NewRouter(
 		middleware.Logger(log),
 	)
 
-	router := &Router{engine: engine}
-	router.registerRoutes(authHandler, version)
-
-	return router
-}
-
-func (r *Router) registerRoutes(
-	authHandler *auth.Handler,
-	version string,
-) {
 	oaRouter := ginopenapi.NewRouter(
-		r.engine,
+		engine,
 		option.WithSwaggerUI(),
-		option.WithTitle("GSS"),
+		option.WithTitle("GSS API"),
 		option.WithVersion(version),
 		option.WithSecurity("bearerAuth", option.SecurityHTTPBearer("Bearer")),
 	)
 
 	api := oaRouter.Group("/api")
-	authHandler.RegisterRoutes(api)
+	for _, r := range routes {
+		r.RegisterRoutes(api)
+	}
+
+	return &Router{engine: engine}
 }
 
 // Handler returns the underlying http.Handler for use with net/http server.

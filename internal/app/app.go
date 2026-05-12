@@ -3,141 +3,116 @@ package app
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
 	"gss/configs"
-	deliveryhttp "gss/internal/delivery/http"
+	deliveryHTTP "gss/internal/delivery/http"
 	"gss/internal/delivery/http/handler"
-	authhandler "gss/internal/delivery/http/handler/auth"
+	"gss/internal/delivery/http/handler/auth"
 	"gss/internal/infrastructure/logger"
 	"gss/internal/infrastructure/orm"
 	"gss/internal/repository"
 	"gss/pkg/database/mysql"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 )
 
 type App struct {
-	cfg             *configs.Config
-	log             *logger.Logger
-	sqlDB           *sql.DB
-	httpServer      *http.Server
-	shutdownTimeout time.Duration
+	cfg    *configs.Config
+	db     *sql.DB
+	srv    *http.Server
+	logger *logger.Logger
+	wg     sync.WaitGroup
 }
 
-func New() *App {
-	cfg := configs.Get()
+func New(
+	cfg *configs.Config,
+	logger *logger.Logger,
+) (*App, error) {
+	// 1. Database
+	mysqlDB, err := mysql.New(
+		mysql.WithDSN(cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Database),
+		mysql.WithMaxIdleConns(cfg.MySQL.MaxIdleConns),
+		mysql.WithMaxOpenConns(cfg.MySQL.MaxOpenConns),
+		mysql.WithConnMaxLifetime(cfg.MySQL.ConnMaxLifetime),
+		mysql.WithConnMaxIdleTime(cfg.MySQL.ConnMaxIdleTime),
+	)
+	if err != nil {
+		return nil, err
+	}
 
-	log := logger.New(
-		logger.WithLevel(cfg.Logger.Level),
+	// 2. ORM
+	ormDB, err := orm.NewDB(mysqlDB, "mysql")
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Handlers & Repositories
+	baseHandler := handler.NewHandler(cfg.Logger.Level)
+	userRepo := repository.NewUserRepository(ormDB, logger)
+	authHandler := auth.NewHandler(baseHandler, userRepo, 10*time.Second, logger)
+
+	// 4. Router
+	router := deliveryHTTP.NewRouter(
+		logger,
+		"v1",
+		authHandler,
 	)
 
 	return &App{
-		cfg: cfg,
-		log: log,
-	}
+		cfg:    cfg,
+		db:     mysqlDB,
+		logger: logger,
+		srv: &http.Server{
+			Addr:    ":8080",
+			Handler: router.Handler(),
+		},
+	}, nil
 }
 
-func (a *App) Start() {
-	ctx := context.Background()
+func (s *App) Run() error {
+	defer s.wg.Wait()
+	return s.start()
+}
 
-	a.initDB(ctx)
-	a.initHTTPServer(ctx)
+func (s *App) start() error {
+	s.stop(10*time.Second, func(ctx context.Context) error {
+		return s.srv.Shutdown(ctx)
+	})
 
-	// Start
-	errCh := make(chan error, 1)
-	go func() {
-		a.log.InfoContext(ctx, "HTTP server starting", "addr", a.httpServer.Addr)
-		if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+	if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	return nil
+}
+
+func (s *App) stop(
+	timeout time.Duration,
+	callback func(ctx context.Context) error,
+) {
+	s.wg.Go(func() {
+		quit := make(chan os.Signal, 1)
+		signal.Notify(quit, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		defer signal.Stop(quit)
+
+		sig := <-quit
+		s.logger.Info("Received signal " + sig.String() + ". Shutting down...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		if err := callback(ctx); err != nil {
+			s.logger.Error("Error during graceful shutdown", "err", err)
 		}
-		close(errCh)
-	}()
 
-	// Wait for signal or server error
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case sig := <-quit:
-		a.log.InfoContext(ctx, "Received signal", "signal", sig.String())
-	case err := <-errCh:
-		if err != nil {
-			a.log.ErrorContext(ctx, "Server error", "error", err)
+		if s.db != nil {
+			s.logger.Info("Closing database connection...")
+			if err := s.db.Close(); err != nil {
+				s.logger.Error("Error closing database", "err", err)
+			}
 		}
-	}
-
-	a.Shutdown(ctx)
-}
-
-func (a *App) Shutdown(ctx context.Context) {
-	a.log.InfoContext(ctx, "Shutting down gracefully...")
-
-	shutdownCtx, cancel := context.WithTimeout(ctx, a.shutdownTimeout)
-	defer cancel()
-
-	if err := a.httpServer.Shutdown(shutdownCtx); err != nil {
-		a.log.ErrorContext(ctx, "Server forced to shutdown", "error", err)
-	}
-
-	if a.sqlDB != nil {
-		mysql.Close(a.sqlDB)
-	}
-
-	a.log.InfoContext(ctx, "Server exited")
-}
-
-func (a *App) initDB(ctx context.Context) {
-	a.log.InfoContext(ctx, "Connecting to database...")
-
-	sqlDB, err := mysql.New(
-		mysql.WithDSN(a.cfg.MySQL.Host, a.cfg.MySQL.Port, a.cfg.MySQL.User, a.cfg.MySQL.Password, a.cfg.MySQL.Database),
-		mysql.WithMaxOpenConns(a.cfg.MySQL.MaxOpenConns),
-		mysql.WithMaxIdleConns(a.cfg.MySQL.MaxIdleConns),
-		mysql.WithConnMaxLifetime(a.cfg.MySQL.ConnMaxLifetime),
-		mysql.WithConnMaxIdleTime(a.cfg.MySQL.ConnMaxIdleTime),
-	)
-	if err != nil {
-		a.log.FatalContext(ctx, "Failed to connect to database", "error", err)
-	}
-	a.sqlDB = sqlDB
-
-	a.log.InfoContext(ctx, "Connected to database successfully")
-}
-
-func (a *App) initHTTPServer(ctx context.Context) {
-	db, err := orm.NewDB(a.sqlDB, "mysql")
-	if err != nil {
-		a.log.FatalContext(ctx, "Failed to initialize ORM", "error", err)
-	}
-
-	ormLogger := orm.New(
-		orm.WithLogger(a.log),
-		orm.WithLevel(a.cfg.Logger.Level),
-	)
-	db.AddQueryHook(ormLogger)
-
-	// Repositories
-	userRepo := repository.NewUserRepository(db, a.log)
-
-	// Handlers
-	baseHandler := handler.NewHandler(a.cfg.Logger.Level)
-	authHandler := authhandler.NewHandler(baseHandler, userRepo, 10*time.Second, a.log)
-
-	// Router
-	router := deliveryhttp.NewRouter(authHandler, a.log, "1.0.0")
-
-	// Shutdown timeout
-	a.shutdownTimeout = time.Duration(a.cfg.Server.ShutdownTimeout) * time.Second
-	if a.shutdownTimeout == 0 {
-		a.shutdownTimeout = 10 * time.Second
-	}
-
-	a.httpServer = &http.Server{
-		Addr:    ":" + a.cfg.Server.Port,
-		Handler: router.Handler(),
-	}
+	})
 }
