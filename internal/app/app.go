@@ -49,6 +49,11 @@ func New(
 		return nil, err
 	}
 
+	db.AddQueryHook(orm.NewLogger(
+		orm.WithLogger(logger),
+		orm.WithLevel(cfg.Logger.Level),
+	))
+
 	repositoryContainer := repository.NewRepositoryContainer(db, logger)
 
 	baseHandler := handler.NewHandler(cfg.Logger.Level)

@@ -30,6 +30,8 @@ func NewRouter(
 	engine.Use(
 		middleware.Recovery(logger),
 		middleware.Logger(logger),
+		middleware.CORS(),
+		middleware.Gzip(),
 	)
 
 	router := ginopenapi.NewRouter(

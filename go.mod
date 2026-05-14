@@ -9,6 +9,8 @@ tool (
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/gin-contrib/cors v1.7.7
+	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/go-sql-driver/mysql v1.10.0

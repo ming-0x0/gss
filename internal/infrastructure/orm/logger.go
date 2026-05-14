@@ -44,7 +44,7 @@ func WithLevel(level string) Option {
 	}
 }
 
-func New(opts ...Option) *Logger {
+func NewLogger(opts ...Option) *Logger {
 	l := &Logger{
 		level:             logger.Info,
 		slowThreshold:     200 * time.Millisecond,
