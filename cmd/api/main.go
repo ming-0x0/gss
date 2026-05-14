@@ -7,7 +7,7 @@ import (
 	"gss/pkg/timezone"
 )
 
-var VERSION string
+var VERSION = "0.0.1"
 
 func main() {
 	timezone.SetTimeZoneICT()

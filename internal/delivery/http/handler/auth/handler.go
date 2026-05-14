@@ -6,7 +6,6 @@ import (
 	"gss/internal/domain"
 	"gss/internal/infrastructure/logger"
 	"net/http"
-	"time"
 
 	"github.com/oaswrap/spec/adapter/ginopenapi"
 	"github.com/oaswrap/spec/option"
@@ -14,22 +13,19 @@ import (
 
 type Handler struct {
 	*handler.Handler
-	userRepo       domain.UserRepositoryInterface
-	contextTimeout time.Duration
-	logger         *logger.Logger
+	userRepo domain.UserRepositoryInterface
+	logger   *logger.Logger
 }
 
 func NewHandler(
 	base *handler.Handler,
 	userRepo domain.UserRepositoryInterface,
-	contextTimeout time.Duration,
 	logger *logger.Logger,
 ) *Handler {
 	return &Handler{
-		Handler:        base,
-		userRepo:       userRepo,
-		contextTimeout: contextTimeout,
-		logger:         logger,
+		Handler:  base,
+		userRepo: userRepo,
+		logger:   logger,
 	}
 }
 

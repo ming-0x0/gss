@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"gss/internal/delivery/http/middleware"
 	"gss/internal/infrastructure/logger"
 	"net/http"
@@ -10,7 +11,7 @@ import (
 	"github.com/oaswrap/spec/option"
 )
 
-type router interface {
+type Handler interface {
 	RegisterRoutes(r ginopenapi.Router)
 }
 
@@ -19,19 +20,19 @@ type Router struct {
 }
 
 func NewRouter(
-	log *logger.Logger,
+	logger *logger.Logger,
 	version string,
-	routes ...router,
-) *Router {
+	handlers ...Handler,
+) (*Router, error) {
 	engine := gin.New()
 
 	// Global middleware
 	engine.Use(
-		middleware.Recovery(log),
-		middleware.Logger(log),
+		middleware.Recovery(logger),
+		middleware.Logger(logger),
 	)
 
-	oaRouter := ginopenapi.NewRouter(
+	router := ginopenapi.NewRouter(
 		engine,
 		option.WithSwaggerUI(),
 		option.WithTitle("GSS API"),
@@ -39,15 +40,19 @@ func NewRouter(
 		option.WithSecurity("bearerAuth", option.SecurityHTTPBearer("Bearer")),
 	)
 
-	api := oaRouter.Group("/api")
-	for _, r := range routes {
-		r.RegisterRoutes(api)
+	api := router.Group("/api")
+	for _, h := range handlers {
+		h.RegisterRoutes(api)
 	}
 
-	return &Router{engine: engine}
+	if err := router.Validate(); err != nil {
+		return nil, fmt.Errorf("openapi spec validation failed: %w", err)
+	}
+
+	return &Router{engine: engine}, nil
 }
 
 // Handler returns the underlying http.Handler for use with net/http server.
 func (r *Router) Handler() http.Handler {
-	return r.engine
+	return r.engine.Handler()
 }

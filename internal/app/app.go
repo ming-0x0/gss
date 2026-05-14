@@ -32,6 +32,7 @@ func New(
 	cfg *configs.Config,
 	logger *logger.Logger,
 ) (*App, error) {
+	logger.Info("Connecting to mysql database...")
 	mysqlDB, err := mysql.New(
 		mysql.WithDSN(cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Database),
 		mysql.WithMaxIdleConns(cfg.MySQL.MaxIdleConns),
@@ -48,16 +49,22 @@ func New(
 		return nil, err
 	}
 
-	userRepo := repository.NewUserRepository(db, logger)
+	repositoryContainer := repository.NewRepositoryContainer(db, logger)
 
 	baseHandler := handler.NewHandler(cfg.Logger.Level)
-	authHandler := auth.NewHandler(baseHandler, userRepo, logger)
 
-	router := deliveryHTTP.NewRouter(
+	handlers := []deliveryHTTP.Handler{
+		auth.NewHandler(baseHandler, repositoryContainer.UserRepository, logger),
+	}
+
+	router, err := deliveryHTTP.NewRouter(
 		logger,
 		version,
-		authHandler,
+		handlers...,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	return &App{
 		cfg:    cfg,
@@ -70,46 +77,46 @@ func New(
 	}, nil
 }
 
-func (s *App) Run() error {
-	defer s.wg.Wait()
-	return s.start()
+func (a *App) Run() error {
+	defer a.wg.Wait()
+	return a.start()
 }
 
-func (s *App) start() error {
-	s.stop(10*time.Second, func(ctx context.Context) error {
-		return s.srv.Shutdown(ctx)
+func (a *App) start() error {
+	a.stop(10*time.Second, func(ctx context.Context) error {
+		return a.srv.Shutdown(ctx)
 	})
 
-	if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
 
 	return nil
 }
 
-func (s *App) stop(
+func (a *App) stop(
 	timeout time.Duration,
 	callback func(ctx context.Context) error,
 ) {
-	s.wg.Go(func() {
+	a.wg.Go(func() {
 		quit := make(chan os.Signal, 1)
 		signal.Notify(quit, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 		defer signal.Stop(quit)
 
 		sig := <-quit
-		s.logger.Info("Received signal " + sig.String() + ". Shutting down...")
+		a.logger.Info("Received signal " + sig.String() + ". Shutting down...")
 
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
 		if err := callback(ctx); err != nil {
-			s.logger.Error("Error during graceful shutdown", "err", err)
+			a.logger.Error("Error during graceful shutdown", "err", err)
 		}
 
-		if s.db != nil {
-			s.logger.Info("Closing database connection...")
-			if err := s.db.Close(); err != nil {
-				s.logger.Error("Error closing database", "err", err)
+		if a.db != nil {
+			a.logger.Info("Closing database connection...")
+			if err := a.db.Close(); err != nil {
+				a.logger.Error("Error closing database", "err", err)
 			}
 		}
 	})
