@@ -5,6 +5,7 @@ import (
 	"gss/internal/delivery/http/middleware"
 	"gss/internal/infrastructure/logger"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/oaswrap/spec/adapter/ginopenapi"
@@ -22,6 +23,7 @@ type Router struct {
 func NewRouter(
 	logger *logger.Logger,
 	version string,
+	requestTimeout time.Duration,
 	handlers ...Handler,
 ) (*Router, error) {
 	engine := gin.New()
@@ -32,6 +34,7 @@ func NewRouter(
 		middleware.Logger(logger),
 		middleware.CORS(),
 		middleware.Gzip(),
+		middleware.Timeout(requestTimeout),
 	)
 
 	router := ginopenapi.NewRouter(

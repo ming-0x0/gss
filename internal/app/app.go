@@ -7,6 +7,7 @@ import (
 	deliveryHTTP "gss/internal/delivery/http"
 	"gss/internal/delivery/http/handler"
 	"gss/internal/delivery/http/handler/auth"
+	"gss/internal/delivery/http/handler/health"
 	"gss/internal/infrastructure/logger"
 	"gss/internal/infrastructure/orm"
 	"gss/internal/repository"
@@ -32,7 +33,7 @@ func New(
 	cfg *configs.Config,
 	logger *logger.Logger,
 ) (*App, error) {
-	logger.Info("Connecting to mysql database...")
+	logger.Info("Connecting to database...")
 	mysqlDB, err := mysql.New(
 		mysql.WithDSN(cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Database),
 		mysql.WithMaxIdleConns(cfg.MySQL.MaxIdleConns),
@@ -60,15 +61,27 @@ func New(
 
 	handlers := []deliveryHTTP.Handler{
 		auth.NewHandler(baseHandler, repositoryContainer.UserRepository, logger),
+		health.NewHandler(),
+	}
+
+	requestTimeout := cfg.HTTP.RequestTimeout
+	if requestTimeout == 0 {
+		requestTimeout = 30 * time.Second
 	}
 
 	router, err := deliveryHTTP.NewRouter(
 		logger,
 		version,
+		requestTimeout,
 		handlers...,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	addr := cfg.HTTP.Port
+	if addr == "" {
+		addr = ":8080"
 	}
 
 	return &App{
@@ -76,8 +89,11 @@ func New(
 		db:     mysqlDB,
 		logger: logger,
 		srv: &http.Server{
-			Addr:    ":8080",
-			Handler: router.Handler(),
+			Addr:         addr,
+			Handler:      router.Handler(),
+			ReadTimeout:  cfg.HTTP.ReadTimeout,
+			WriteTimeout: cfg.HTTP.WriteTimeout,
+			IdleTimeout:  cfg.HTTP.IdleTimeout,
 		},
 	}, nil
 }
@@ -88,7 +104,12 @@ func (a *App) Run() error {
 }
 
 func (a *App) start() error {
-	a.stop(10*time.Second, func(ctx context.Context) error {
+	shutdownTimeout := a.cfg.HTTP.ShutdownTimeout
+	if shutdownTimeout == 0 {
+		shutdownTimeout = 10 * time.Second
+	}
+
+	a.stop(shutdownTimeout, func(ctx context.Context) error {
 		return a.srv.Shutdown(ctx)
 	})
 
