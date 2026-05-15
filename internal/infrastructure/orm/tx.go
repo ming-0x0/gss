@@ -5,20 +5,20 @@ import (
 
 	ctxkey "gss/pkg/ctxutil/key"
 
-	"github.com/uptrace/bun"
+	"gorm.io/gorm"
 )
 
 type Tx struct {
-	db *bun.DB
+	*DB
 }
 
-func NewTx(db *bun.DB) *Tx {
-	return &Tx{db: db}
+func NewTx(db *DB) *Tx {
+	return &Tx{db}
 }
 
-func (t *Tx) Do(ctx context.Context, fn func(ctx context.Context) error) error {
-	return t.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+func (t *Tx) Do(ctx context.Context, fc func(ctx context.Context) error) error {
+	return t.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		ctx = context.WithValue(ctx, ctxkey.TransactionContextKey, tx)
-		return fn(ctx)
+		return fc(ctx)
 	})
 }

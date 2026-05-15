@@ -7,41 +7,46 @@ import (
 
 	ctxkey "gss/pkg/ctxutil/key"
 
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/mysqldialect"
-	"github.com/uptrace/bun/dialect/pgdialect"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 type DB struct {
-	db *bun.DB
+	*gorm.DB
 }
 
 func NewDB(sqlDB *sql.DB, driver string) (*DB, error) {
+	var dialector gorm.Dialector
+
 	switch driver {
 	case "postgres":
-		return &DB{
-			db: bun.NewDB(sqlDB, pgdialect.New()),
-		}, nil
+		dialector = postgres.New(postgres.Config{
+			Conn: sqlDB,
+		})
 	case "mysql":
-		return &DB{
-			db: bun.NewDB(sqlDB, mysqldialect.New()),
-		}, nil
+		dialector = mysql.New(mysql.Config{
+			Conn: sqlDB,
+		})
 	default:
 		return nil, fmt.Errorf("unsupported driver: %s", driver)
 	}
+
+	db, err := gorm.Open(dialector, &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+
+	return &DB{db}, nil
 }
 
-func (db *DB) WithContext(ctx context.Context) bun.IDB {
+func (db *DB) WithContext(ctx context.Context) *gorm.DB {
 	v := ctx.Value(ctxkey.TransactionContextKey)
 	if v != nil {
-		if tx, ok := v.(bun.Tx); ok {
+		if tx, ok := v.(*gorm.DB); ok {
 			return tx
 		}
 	}
 
-	return db.db
-}
-
-func (db *DB) AddQueryHook(hook bun.QueryHook) {
-	db.db.AddQueryHook(hook)
+	return db.WithContext(ctx)
 }

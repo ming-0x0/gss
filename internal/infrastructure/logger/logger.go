@@ -20,6 +20,7 @@ const (
 	Warn  Level = "warn"
 	Info  Level = "info"
 	Debug Level = "debug"
+	Trace Level = "trace"
 )
 
 func (l Level) GTE(other Level) bool {
@@ -32,6 +33,7 @@ const (
 	slogWarn  = slog.Level(2)
 	slogInfo  = slog.Level(1)
 	slogDebug = slog.Level(0)
+	slogTrace = slog.Level(-1)
 )
 
 var background = context.Background()
@@ -48,6 +50,8 @@ func GetLevelFromString(level string) Level {
 		return Info
 	case "debug":
 		return Debug
+	case "trace":
+		return Trace
 	default:
 		return Info
 	}
@@ -84,6 +88,8 @@ func (l Level) ToSlogLevel() slog.Level {
 		return slogInfo
 	case Debug:
 		return slogDebug
+	case Trace:
+		return slogTrace
 	default:
 		return slogInfo
 	}
@@ -101,6 +107,8 @@ func slogLevelName(level slog.Level) string {
 		return "info"
 	case slogDebug:
 		return "debug"
+	case slogTrace:
+		return "trace"
 	default:
 		return level.String()
 	}
@@ -200,8 +208,12 @@ func (l *Logger) DebugContext(ctx context.Context, msg string, keyVals ...any) {
 	l.log(ctx, Debug, msg, keyVals...)
 }
 
-func (l *Logger) With(keyVals ...any) *Logger {
-	return &Logger{Logger: l.Logger.With(keyVals...)}
+func (l *Logger) Trace(msg string, keyVals ...any) {
+	l.log(background, Trace, msg, keyVals...)
+}
+
+func (l *Logger) TraceContext(ctx context.Context, msg string, keyVals ...any) {
+	l.log(ctx, Trace, msg, keyVals...)
 }
 
 func toAttrs(keyVals ...any) []any {
