@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
-	"strconv"
 	"time"
 
 	"gss/internal/infrastructure/logger"
@@ -15,20 +14,16 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// internalPrefixes chứa các tiền tố package cần bỏ qua khi tìm caller.
-// Là array tĩnh (không phải slice) → nằm trên stack, không heap-alloc,
-// và được sắp xếp theo tần suất xuất hiện để thoát sớm nhất có thể.
 var internalPrefixes = [...]string{
 	"gorm.io/",
-	"runtime.",
-	"database/sql.",
 	"gss/internal/infrastructure/orm.",
 	"gss/internal/infrastructure/orm/",
+	"database/sql.",
+	"runtime.",
 }
 
 type Logger struct {
 	handler                   slog.Handler
-	slowMsg                   string // pre-computed "SLOW SQL >= Xms", tránh fmt.Sprintf trong hot path
 	level                     gormlogger.LogLevel
 	slowThreshold             time.Duration
 	ignoreRecordNotFoundError bool
@@ -41,10 +36,7 @@ func WithHandler(handler slog.Handler) Option {
 }
 
 func WithSlowThreshold(d time.Duration) Option {
-	return func(l *Logger) {
-		l.slowThreshold = d
-		l.slowMsg = "SLOW SQL >= " + d.String()
-	}
+	return func(l *Logger) { l.slowThreshold = d }
 }
 
 func WithIgnoreRecordNotFoundError(ignore bool) Option {
@@ -52,11 +44,9 @@ func WithIgnoreRecordNotFoundError(ignore bool) Option {
 }
 
 func New(opts ...Option) *Logger {
-	const defaultSlow = 200 * time.Millisecond
 	l := &Logger{
 		level:                     gormlogger.Warn,
-		slowThreshold:             defaultSlow,
-		slowMsg:                   "SLOW SQL >= " + defaultSlow.String(),
+		slowThreshold:             200 * time.Millisecond,
 		ignoreRecordNotFoundError: true,
 	}
 	for _, opt := range opts {
@@ -74,35 +64,7 @@ func (l *Logger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 	return &clone
 }
 
-// isInternal kiểm tra fn có thuộc package nội bộ/runtime không.
-// Fast-path O(1): lọc qua ký tự đầu tiên trước khi compare prefix đầy đủ.
-// Chỉ 'g', 'r', 'd' mới có thể là internal → bỏ qua toàn bộ vòng lặp cho user frames.
-func isInternal(fn string) bool {
-	if len(fn) == 0 {
-		return false
-	}
-	switch fn[0] {
-	case 'g', 'r', 'd':
-	default:
-		return false
-	}
-	for _, p := range internalPrefixes {
-		if len(fn) >= len(p) && fn[:len(p)] == p {
-			return true
-		}
-	}
-	return false
-}
-
-// fileAttrValue ghép "file:line" dùng strconv.Itoa thay vì fmt.Sprintf,
-// tránh reflection và giảm allocation trong hot path.
-func fileAttrValue(file string, line int) string {
-	return file + ":" + strconv.Itoa(line)
-}
-
-// getCaller trả về frame user-land đầu tiên (bỏ qua internal frames).
-// Không phải method để tránh pointer receiver overhead khi inlining.
-func getCaller(skip int) (file string, line int, fn string, pc uintptr) {
+func (l *Logger) getCaller(skip int) (file string, line int, fn string, pc uintptr) {
 	var pcs [16]uintptr
 	n := runtime.Callers(skip, pcs[:])
 	if n == 0 {
@@ -111,7 +73,7 @@ func getCaller(skip int) (file string, line int, fn string, pc uintptr) {
 	frames := runtime.CallersFrames(pcs[:n])
 	for {
 		frame, more := frames.Next()
-		if !isInternal(frame.Function) {
+		if !l.isInternal(frame.Function) {
 			return frame.File, frame.Line, frame.Function, frame.PC
 		}
 		if !more {
@@ -121,8 +83,19 @@ func getCaller(skip int) (file string, line int, fn string, pc uintptr) {
 	return
 }
 
-// emit ghi record — caller phải đảm bảo handler.Enabled đã được check trước.
+func (l *Logger) isInternal(fn string) bool {
+	for _, prefix := range internalPrefixes {
+		if len(fn) >= len(prefix) && fn[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *Logger) emit(ctx context.Context, level slog.Level, msg string, pc uintptr, attrs []slog.Attr) {
+	if !l.handler.Enabled(ctx, level) {
+		return
+	}
 	r := slog.NewRecord(time.Now(), level, msg, pc)
 	if len(attrs) > 0 {
 		r.AddAttrs(attrs...)
@@ -130,22 +103,21 @@ func (l *Logger) emit(ctx context.Context, level slog.Level, msg string, pc uint
 	_ = l.handler.Handle(ctx, r)
 }
 
-// log dành cho Info/Warn/Error.
-// Dùng [2]slog.Attr trên stack thay vì make() → zero heap allocation.
 func (l *Logger) log(ctx context.Context, level slog.Level, format string, args ...any) {
 	if !l.handler.Enabled(ctx, level) {
 		return
 	}
-	file, line, fn, pc := getCaller(4)
+	file, line, fn, pc := l.getCaller(4)
 	msg := fmt.Sprintf(format, args...)
-	if file == "" {
-		l.emit(ctx, level, msg, pc, nil)
-		return
+
+	attrs := make([]slog.Attr, 0, 2)
+	if file != "" {
+		attrs = append(attrs,
+			slog.String("file", fmt.Sprintf("%s:%d", file, line)),
+			slog.String("func", fn),
+		)
 	}
-	var buf [2]slog.Attr
-	buf[0] = slog.String("file", fileAttrValue(file, line))
-	buf[1] = slog.String("func", fn)
-	l.emit(ctx, level, msg, pc, buf[:])
+	l.emit(ctx, level, msg, pc, attrs)
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, args ...interface{}) {
@@ -167,51 +139,33 @@ func (l *Logger) Error(ctx context.Context, msg string, args ...interface{}) {
 }
 
 func (l *Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
-	// Guard 1: level check rẻ nhất, không alloc gì.
 	if l.level <= gormlogger.Silent {
 		return
 	}
 
-	// Guard 2: phân loại error TRƯỚC khi đọc clock (time.Since).
-	// Đọc clock là syscall, tránh khi sẽ return ngay ở error path.
-	isRealError := err != nil && !(errors.Is(err, gorm.ErrRecordNotFound) && l.ignoreRecordNotFoundError)
-
-	if isRealError {
-		if l.level < gormlogger.Error {
-			return
-		}
-		slogLevel := logger.Error.ToSlogLevel()
-		if !l.handler.Enabled(ctx, slogLevel) {
-			return
-		}
-		// Error path: đọc clock và build attrs chỉ khi thực sự cần ghi log.
-		elapsed := time.Since(begin)
-		sql, rows := fc()
-		file, line, fn, pc := getCaller(3)
-
-		// [7]slog.Attr trên stack: duration + rows? + sql + service + file? + func? + error
-		var buf [7]slog.Attr
-		n := l.fillCommonAttrs(buf[:], elapsed, rows, sql, file, line, fn)
-		buf[n] = slog.String("error", err.Error())
-		n++
-
-		l.emit(ctx, slogLevel, "database error", pc, buf[:n])
-		return
-	}
-
-	// Non-error path: đọc clock để kiểm tra slow query.
 	elapsed := time.Since(begin)
+
+	isRecordNotFound := err != nil && errors.Is(err, gorm.ErrRecordNotFound)
+	isRealError := err != nil && !(isRecordNotFound && l.ignoreRecordNotFoundError)
+	isSlow := !isRealError && l.slowThreshold != 0 && elapsed > l.slowThreshold
 
 	var slogLevel slog.Level
 	var traceMsg string
 
-	if l.slowThreshold != 0 && elapsed > l.slowThreshold {
+	switch {
+	case isRealError:
+		if l.level < gormlogger.Error {
+			return
+		}
+		slogLevel = logger.Error.ToSlogLevel()
+		traceMsg = "database error"
+	case isSlow:
 		if l.level < gormlogger.Warn {
 			return
 		}
 		slogLevel = logger.Warn.ToSlogLevel()
-		traceMsg = l.slowMsg // pre-computed, zero alloc
-	} else {
+		traceMsg = fmt.Sprintf("SLOW SQL >= %v", l.slowThreshold)
+	default:
 		if l.level < gormlogger.Info {
 			return
 		}
@@ -219,43 +173,47 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, 
 		traceMsg = "database query"
 	}
 
-	// Guard 3: handler enabled — tránh getCaller + fc() khi handler tắt.
 	if !l.handler.Enabled(ctx, slogLevel) {
 		return
 	}
 
 	sql, rows := fc()
-	file, line, fn, pc := getCaller(3)
+	file, line, fn, pc := l.getCaller(3)
 
-	// [6]slog.Attr trên stack: duration + rows? + sql + service + file? + func?
-	var buf [6]slog.Attr
-	n := l.fillCommonAttrs(buf[:], elapsed, rows, sql, file, line, fn)
-
-	l.emit(ctx, slogLevel, traceMsg, pc, buf[:n])
-}
-
-// fillCommonAttrs điền các attr chung (duration, rows, sql, service, file, func)
-// vào dst và trả về số lượng attr đã điền.
-// Tách ra để tránh duplicate code giữa error path và non-error path trong Trace.
-func (l *Logger) fillCommonAttrs(dst []slog.Attr, elapsed time.Duration, rows int64, sql, file string, line int, fn string) int {
-	n := 0
-	dst[n] = slog.Duration("duration", elapsed)
-	n++
+	capacity := 4
 	if rows >= 0 {
-		dst[n] = slog.Int64("rows", rows)
-		n++
+		capacity++
 	}
-	dst[n] = slog.String("sql", sql)
-	n++
-	dst[n] = slog.String("service", "database")
-	n++
 	if file != "" {
-		dst[n] = slog.String("file", fileAttrValue(file, line))
-		n++
+		capacity++
 	}
 	if fn != "" {
-		dst[n] = slog.String("func", fn)
-		n++
+		capacity++
 	}
-	return n
+	if isRealError {
+		capacity++
+	}
+
+	attrs := make([]slog.Attr, 0, capacity)
+	attrs = append(attrs,
+		slog.Duration("duration", elapsed),
+	)
+	if rows >= 0 {
+		attrs = append(attrs, slog.Int64("rows", rows))
+	}
+	attrs = append(attrs,
+		slog.String("sql", sql),
+		slog.String("service", "database"),
+	)
+	if file != "" {
+		attrs = append(attrs, slog.String("file", fmt.Sprintf("%s:%d", file, line)))
+	}
+	if fn != "" {
+		attrs = append(attrs, slog.String("func", fn))
+	}
+	if isRealError {
+		attrs = append(attrs, slog.String("error", err.Error()))
+	}
+
+	l.emit(ctx, slogLevel, traceMsg, pc, attrs)
 }
