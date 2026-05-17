@@ -5,12 +5,16 @@ import (
 	"database/sql"
 	"fmt"
 
-	ctxkey "gss/pkg/ctxutil/key"
-
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+type ctxKey struct {
+	name string
+}
+
+var txCtxKey = &ctxKey{name: "tx"}
 
 type DB struct {
 	*gorm.DB
@@ -41,7 +45,7 @@ func NewDB(sqlDB *sql.DB, driver string) (*DB, error) {
 }
 
 func (db *DB) WithContext(ctx context.Context) *gorm.DB {
-	v := ctx.Value(ctxkey.TransactionContextKey)
+	v := ctx.Value(txCtxKey)
 	if v != nil {
 		if tx, ok := v.(*gorm.DB); ok {
 			return tx
