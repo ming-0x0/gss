@@ -2,8 +2,6 @@ package domain
 
 import (
 	"context"
-
-	"github.com/uptrace/bun"
 )
 
 //go:generate go tool mockgen -source=user.go -destination=./mocks/user.go -package=mocks
@@ -13,9 +11,8 @@ type UserRepositoryInterface interface {
 }
 
 type User struct {
-	bun.BaseModel `bun:"table:users,alias:u"`
-	ID            int    `bun:"id,pk,autoincrement"`
-	Email         string `bun:"email,notnull,unique"`
-	Password      string `bun:"password,notnull"`
-	TimestampWithDeletedAt
+	ID       int    `gorm:"column:id;primaryKey;type:bigint;not null;autoIncrement"`
+	Email    string `gorm:"column:email;type:varchar(255);not null;unique"`
+	Password string `gorm:"column:password;type:varchar(100);not null"`
+	Timestamp
 }

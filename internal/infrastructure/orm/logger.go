@@ -102,10 +102,13 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...
 	var pcs [1]uintptr
 	runtime.Callers(3, pcs[:])
 	r := slog.NewRecord(time.Now(), level, fmt.Sprintf(msg, args...), pcs[0])
+	if fn := runtime.FuncForPC(pcs[0]); fn != nil {
+		r.AddAttrs(slog.String("func", fn.Name()))
+	}
 	_ = l.handler.Handle(ctx, r)
 }
 
-func (l *Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+func (l *Logger) Trace(ctx context.Context, begin time.Time, fn func() (string, int64), err error) {
 	if l.level <= gormlogger.Silent {
 		return
 	}
@@ -117,21 +120,21 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, fc func() (string, 
 		if l.level < gormlogger.Error {
 			return
 		}
-		sql, rows := fc()
+		sql, rows := fn()
 		l.trace(ctx, Error, "SQL Query failed", elapsed, sql, rows, err)
 
 	case l.slowThreshold != 0 && elapsed > l.slowThreshold:
 		if l.level < gormlogger.Warn {
 			return
 		}
-		sql, rows := fc()
+		sql, rows := fn()
 		l.trace(ctx, Warn, "Performed SLOW SQL Query", elapsed, sql, rows, nil)
 
 	default:
 		if l.level < gormlogger.Info {
 			return
 		}
-		sql, rows := fc()
+		sql, rows := fn()
 		l.trace(ctx, Info, "Performed SQL Query", elapsed, sql, rows, nil)
 	}
 }
@@ -150,6 +153,11 @@ func (l *Logger) trace(ctx context.Context, level slog.Level, msg string, elapse
 		slog.String("service", "database"),
 		slog.String("file", utils.FileWithLineNum()),
 	}
+
+	if fn := runtime.FuncForPC(pcs[0]); fn != nil {
+		attrs = append(attrs, slog.String("func", fn.Name()))
+	}
+
 	if rows >= 0 {
 		attrs = append(attrs, slog.Int64("rows", rows))
 	} else {
