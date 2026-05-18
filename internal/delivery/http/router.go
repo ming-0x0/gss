@@ -17,38 +17,67 @@ type Handler interface {
 }
 
 type Router struct {
-	*gin.Engine
+	version  string
+	timeout  time.Duration
+	engine   *gin.Engine
+	logger   *logger.Logger
+	handlers []Handler
 }
 
-type RouterConfig struct {
-	Logger         *logger.Logger
-	Version        string
-	RequestTimeout time.Duration
+type Option func(*Router)
+
+func WithVersion(version string) Option {
+	return func(r *Router) {
+		r.version = version
+	}
+}
+
+func WithTimeout(timeout int) Option {
+	return func(r *Router) {
+		r.timeout = time.Duration(timeout)
+	}
+}
+
+func WithLogger(logger *logger.Logger) Option {
+	return func(r *Router) {
+		r.logger = logger
+	}
+}
+
+func WithHandlers(handlers ...Handler) Option {
+	return func(r *Router) {
+		r.handlers = append(r.handlers, handlers...)
+	}
 }
 
 func NewRouter(
-	cfg RouterConfig,
-	handlers ...Handler,
+	opts ...Option,
 ) (*Router, error) {
+	r := &Router{}
+	for _, opt := range opts {
+		opt(r)
+	}
+
 	engine := gin.New()
+	r.engine = engine
 
 	engine.Use(
 		middleware.RequestID(),
-		middleware.Recovery(cfg.Logger),
-		middleware.Logger(cfg.Logger),
-		middleware.Timeout(cfg.RequestTimeout),
+		middleware.Recovery(r.logger),
+		middleware.Logger(r.logger),
+		middleware.Timeout(r.timeout),
 	)
 
 	router := ginopenapi.NewRouter(
 		engine,
 		option.WithSwaggerUI(),
 		option.WithTitle("GSS API"),
-		option.WithVersion(cfg.Version),
+		option.WithVersion(r.version),
 		option.WithSecurity("bearerAuth", option.SecurityHTTPBearer("Bearer")),
 	)
 
 	api := router.Group("/api")
-	for _, h := range handlers {
+	for _, h := range r.handlers {
 		h.RegisterRoutes(api)
 	}
 
@@ -56,9 +85,9 @@ func NewRouter(
 		return nil, fmt.Errorf("openapi spec validation failed: %w", err)
 	}
 
-	return &Router{engine}, nil
+	return r, nil
 }
 
 func (r *Router) Handler() http.Handler {
-	return r.Engine.Handler()
+	return r.engine
 }

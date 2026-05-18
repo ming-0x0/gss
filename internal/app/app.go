@@ -56,12 +56,10 @@ func New(
 	handlers := []deliveryHTTP.Handler{}
 
 	router, err := deliveryHTTP.NewRouter(
-		deliveryHTTP.RouterConfig{
-			Logger:         logger,
-			Version:        version,
-			RequestTimeout: cfg.HTTP.RequestTimeout,
-		},
-		handlers...,
+		deliveryHTTP.WithLogger(logger),
+		deliveryHTTP.WithVersion(version),
+		deliveryHTTP.WithTimeout(cfg.HTTP.RequestTimeout),
+		deliveryHTTP.WithHandlers(handlers...),
 	)
 	if err != nil {
 		return nil, err
@@ -79,9 +77,9 @@ func New(
 		srv: &http.Server{
 			Addr:         addr,
 			Handler:      router.Handler(),
-			ReadTimeout:  cfg.HTTP.ReadTimeout,
-			WriteTimeout: cfg.HTTP.WriteTimeout,
-			IdleTimeout:  cfg.HTTP.IdleTimeout,
+			ReadTimeout:  time.Duration(cfg.HTTP.ReadTimeout) * time.Second,
+			WriteTimeout: time.Duration(cfg.HTTP.WriteTimeout) * time.Second,
+			IdleTimeout:  time.Duration(cfg.HTTP.IdleTimeout) * time.Second,
 		},
 	}, nil
 }
