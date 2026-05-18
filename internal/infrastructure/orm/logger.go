@@ -26,21 +26,21 @@ type Logger struct {
 	ignoreRecordNotFoundError bool
 }
 
-type Option func(*Logger)
+type LoggerOption func(*Logger)
 
-func WithHandler(handler slog.Handler) Option {
+func WithLoggerHandler(handler slog.Handler) LoggerOption {
 	return func(l *Logger) { l.handler = handler }
 }
 
-func WithSlowThreshold(d time.Duration) Option {
+func WithSlowThreshold(d time.Duration) LoggerOption {
 	return func(l *Logger) { l.slowThreshold = d }
 }
 
-func WithIgnoreRecordNotFoundError(ignore bool) Option {
+func WithIgnoreRecordNotFoundError(ignore bool) LoggerOption {
 	return func(l *Logger) { l.ignoreRecordNotFoundError = ignore }
 }
 
-func WithLevel(level string) Option {
+func WithLoggerLevel(level string) LoggerOption {
 	return func(l *Logger) {
 		switch level {
 		case "silent":
@@ -55,7 +55,7 @@ func WithLevel(level string) Option {
 	}
 }
 
-func New(opts ...Option) *Logger {
+func NewLogger(opts ...LoggerOption) *Logger {
 	l := &Logger{
 		level:                     gormlogger.Info,
 		slowThreshold:             200 * time.Millisecond,

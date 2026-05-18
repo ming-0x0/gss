@@ -8,6 +8,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 type ctxKey struct {
@@ -20,7 +21,15 @@ type DB struct {
 	*gorm.DB
 }
 
-func NewDB(sqlDB *sql.DB, driver string) (*DB, error) {
+type DBOption func(*gorm.Config)
+
+func WithLogger(l gormlogger.Interface) DBOption {
+	return func(cfg *gorm.Config) {
+		cfg.Logger = l
+	}
+}
+
+func NewDB(sqlDB *sql.DB, driver string, opts ...DBOption) (*DB, error) {
 	var dialector gorm.Dialector
 
 	switch driver {
@@ -36,7 +45,12 @@ func NewDB(sqlDB *sql.DB, driver string) (*DB, error) {
 		return nil, fmt.Errorf("unsupported driver: %s", driver)
 	}
 
-	db, err := gorm.Open(dialector, &gorm.Config{})
+	gormCfg := &gorm.Config{}
+	for _, opt := range opts {
+		opt(gormCfg)
+	}
+
+	db, err := gorm.Open(dialector, gormCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -52,5 +66,5 @@ func (db *DB) WithContext(ctx context.Context) *gorm.DB {
 		}
 	}
 
-	return db.WithContext(ctx)
+	return db.DB.WithContext(ctx)
 }

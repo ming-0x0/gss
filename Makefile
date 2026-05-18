@@ -1,7 +1,9 @@
 SHELL := /bin/bash
 
-.PHONY: docker-local-up docker-local-down docker-local-restart 
+.PHONY: run docker-local-up docker-local-down docker-local-restart
 
+run:
+	@go run ./cmd/api
 
 docker-local-up:
 	@bash scripts/docker-compose.local.sh up
