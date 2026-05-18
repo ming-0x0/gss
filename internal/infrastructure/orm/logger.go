@@ -36,8 +36,8 @@ func WithSlowThreshold(d time.Duration) LoggerOption {
 	return func(l *Logger) { l.slowThreshold = d }
 }
 
-func WithIgnoreRecordNotFoundError(ignore bool) LoggerOption {
-	return func(l *Logger) { l.ignoreRecordNotFoundError = ignore }
+func WithIgnoreRecordNotFoundError() LoggerOption {
+	return func(l *Logger) { l.ignoreRecordNotFoundError = true }
 }
 
 func WithLoggerLevel(level string) LoggerOption {
@@ -59,7 +59,7 @@ func NewLogger(opts ...LoggerOption) *Logger {
 	l := &Logger{
 		level:                     gormlogger.Info,
 		slowThreshold:             200 * time.Millisecond,
-		ignoreRecordNotFoundError: true,
+		ignoreRecordNotFoundError: false,
 	}
 	for _, opt := range opts {
 		opt(l)

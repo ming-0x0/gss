@@ -8,6 +8,7 @@ import (
 )
 
 type Config struct {
+	App    AppConfig    `mapstructure:",squash"`
 	HTTP   HTTPConfig   `mapstructure:",squash"`
 	Logger LoggerConfig `mapstructure:",squash"`
 	MySQL  MySQLConfig  `mapstructure:",squash"`
