@@ -41,7 +41,7 @@ func New(
 		return nil, err
 	}
 
-	_, err = orm.NewDB(mysqlDB, "mysql", orm.WithLogger(
+	db, err := orm.NewDB(mysqlDB, "mysql", orm.WithLogger(
 		orm.NewLogger(
 			orm.WithLoggerHandler(logger.Handler()),
 			orm.WithLoggerLevel(cfg.Logger.Level),
@@ -51,11 +51,16 @@ func New(
 		return nil, err
 	}
 
+	_ = db // TODO: inject db into repositories and handlers
+
 	handlers := []deliveryHTTP.Handler{}
 
 	router, err := deliveryHTTP.NewRouter(
-		logger,
-		version,
+		deliveryHTTP.RouterConfig{
+			Logger:         logger,
+			Version:        version,
+			RequestTimeout: cfg.HTTP.RequestTimeout,
+		},
 		handlers...,
 	)
 	if err != nil {
