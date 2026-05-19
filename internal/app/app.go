@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"gss/configs"
 	deliveryHTTP "gss/internal/delivery/http"
 	"gss/internal/infrastructure/logger"
@@ -18,7 +17,7 @@ import (
 
 type App struct {
 	cfg    *configs.Config
-	db     *sql.DB
+	db     *orm.DB
 	srv    *http.Server
 	logger *logger.Logger
 	wg     sync.WaitGroup
@@ -30,7 +29,7 @@ func New(
 	logger *logger.Logger,
 ) (*App, error) {
 	logger.Info("Connecting to database...")
-	mysqlDB, err := mysql.New(
+	mysqlConn, err := mysql.Open(
 		mysql.WithDSN(cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Database),
 		mysql.WithMaxIdleConns(cfg.MySQL.MaxIdleConns),
 		mysql.WithMaxOpenConns(cfg.MySQL.MaxOpenConns),
@@ -41,7 +40,7 @@ func New(
 		return nil, err
 	}
 
-	db, err := orm.NewDB(mysqlDB, "mysql", orm.WithLogger(
+	db, err := orm.NewDB(mysqlConn, "mysql", orm.WithLogger(
 		orm.NewLogger(
 			orm.WithLoggerHandler(logger.Handler()),
 			orm.WithLoggerLevel(cfg.Logger.Level),
@@ -67,7 +66,7 @@ func New(
 
 	return &App{
 		cfg:    cfg,
-		db:     mysqlDB,
+		db:     db,
 		logger: logger,
 		srv: &http.Server{
 			Addr:         ":" + cfg.HTTP.Port,

@@ -2,7 +2,6 @@ package orm
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"gorm.io/driver/mysql"
@@ -29,17 +28,17 @@ func WithLogger(l gormlogger.Interface) DBOption {
 	}
 }
 
-func NewDB(sqlDB *sql.DB, driver string, opts ...DBOption) (*DB, error) {
+func NewDB(conn gorm.ConnPool, driver string, opts ...DBOption) (*DB, error) {
 	var dialector gorm.Dialector
 
 	switch driver {
 	case "postgres":
 		dialector = postgres.New(postgres.Config{
-			Conn: sqlDB,
+			Conn: conn,
 		})
 	case "mysql":
 		dialector = mysql.New(mysql.Config{
-			Conn: sqlDB,
+			Conn: conn,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported driver: %s", driver)
@@ -67,4 +66,13 @@ func (db *DB) WithContext(ctx context.Context) *gorm.DB {
 	}
 
 	return db.DB.WithContext(ctx)
+}
+
+func (db *DB) Close() error {
+	sqlDB, err := db.DB.DB()
+	if err != nil {
+		return err
+	}
+
+	return sqlDB.Close()
 }

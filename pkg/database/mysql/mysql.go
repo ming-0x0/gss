@@ -49,7 +49,7 @@ func WithConnMaxIdleTime(connMaxIdleTime time.Duration) option {
 
 type option func(*config)
 
-func New(opts ...option) (*sql.DB, error) {
+func Open(opts ...option) (*sql.DB, error) {
 	cfg := &config{
 		maxOpenConns:    10,
 		maxIdleConns:    10,

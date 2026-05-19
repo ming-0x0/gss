@@ -39,8 +39,7 @@ func Load() error {
 
 	v.WatchConfig()
 	v.OnConfigChange(func(e fsnotify.Event) {
-		cfg, err := parse(v)
-		if err == nil {
+		if cfg, err := parse(v); err == nil {
 			ptr.Store(cfg)
 		}
 	})

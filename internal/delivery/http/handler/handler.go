@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"gss/configs"
 	"gss/internal/errcode"
 	"gss/internal/infrastructure/logger"
 
@@ -21,21 +22,17 @@ type Error struct {
 	Details any `json:"details,omitempty"`
 }
 
-type Handler struct {
-	level logger.Level
+type BaseHandler struct{}
+
+func NewBaseHandler() *BaseHandler {
+	return &BaseHandler{}
 }
 
-func NewHandler(level string) *Handler {
-	return &Handler{
-		level: logger.GetLevelFromString(level),
-	}
+func (h *BaseHandler) isDebugMode() bool {
+	return logger.Debug.GTE(logger.GetLevelFromString(configs.Get().Logger.Level))
 }
 
-func (h *Handler) isDebugMode() bool {
-	return logger.Debug.GTE(h.level)
-}
-
-func (h *Handler) OK(c *gin.Context, data any) {
+func (h *BaseHandler) OK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, Response{
 		Code:    0,
 		Message: "success",
@@ -43,7 +40,7 @@ func (h *Handler) OK(c *gin.Context, data any) {
 	})
 }
 
-func (h *Handler) Created(c *gin.Context, data any) {
+func (h *BaseHandler) Created(c *gin.Context, data any) {
 	c.JSON(http.StatusCreated, Response{
 		Code:    0,
 		Message: "created",
@@ -51,12 +48,12 @@ func (h *Handler) Created(c *gin.Context, data any) {
 	})
 }
 
-func (h *Handler) Err(c *gin.Context, err error) {
+func (h *BaseHandler) Err(c *gin.Context, err error) {
 	status, resp := h.buildErrorResponse(err)
 	c.JSON(status, resp)
 }
 
-func (h *Handler) buildErrorResponse(err error) (int, Response) {
+func (h *BaseHandler) buildErrorResponse(err error) (int, Response) {
 	var e *errcode.Error
 	if !errors.As(err, &e) {
 		return http.StatusInternalServerError, Response{
