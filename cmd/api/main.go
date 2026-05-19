@@ -29,6 +29,6 @@ func main() {
 	}
 
 	if err := app.Run(); err != nil {
-		logger.Fatal("An error happened while starting the HTTP server", "err", err)
+		logger.Fatal("An error happened while running the app", "err", err)
 	}
 }

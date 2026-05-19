@@ -12,8 +12,8 @@ type config struct {
 	dsn             string
 	maxOpenConns    int
 	maxIdleConns    int
-	connMaxLifetime int
-	connMaxIdleTime int
+	connMaxLifetime time.Duration
+	connMaxIdleTime time.Duration
 }
 
 func WithDSN(host string, port int, user string, password string, dbName string) option {
@@ -35,13 +35,13 @@ func WithMaxIdleConns(maxIdleConns int) option {
 	}
 }
 
-func WithConnMaxLifetime(connMaxLifetime int) option {
+func WithConnMaxLifetime(connMaxLifetime time.Duration) option {
 	return func(cfg *config) {
 		cfg.connMaxLifetime = connMaxLifetime
 	}
 }
 
-func WithConnMaxIdleTime(connMaxIdleTime int) option {
+func WithConnMaxIdleTime(connMaxIdleTime time.Duration) option {
 	return func(cfg *config) {
 		cfg.connMaxIdleTime = connMaxIdleTime
 	}

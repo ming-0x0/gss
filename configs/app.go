@@ -1,5 +1,7 @@
 package configs
 
+import "time"
+
 type AppConfig struct {
-	ShutdownTimeout int `mapstructure:"APP_SHUTDOWN_TIMEOUT"`
+	ShutdownTimeout time.Duration `mapstructure:"APP_SHUTDOWN_TIMEOUT"`
 }

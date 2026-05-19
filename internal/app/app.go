@@ -65,21 +65,16 @@ func New(
 		return nil, err
 	}
 
-	addr := cfg.HTTP.Port
-	if addr == "" {
-		addr = ":8080"
-	}
-
 	return &App{
 		cfg:    cfg,
 		db:     mysqlDB,
 		logger: logger,
 		srv: &http.Server{
-			Addr:         addr,
+			Addr:         ":" + cfg.HTTP.Port,
 			Handler:      router.Handler(),
-			ReadTimeout:  time.Duration(cfg.HTTP.ReadTimeout) * time.Second,
-			WriteTimeout: time.Duration(cfg.HTTP.WriteTimeout) * time.Second,
-			IdleTimeout:  time.Duration(cfg.HTTP.IdleTimeout) * time.Second,
+			ReadTimeout:  cfg.HTTP.ReadTimeout,
+			WriteTimeout: cfg.HTTP.WriteTimeout,
+			IdleTimeout:  cfg.HTTP.IdleTimeout,
 		},
 	}, nil
 }
@@ -90,12 +85,7 @@ func (a *App) Run() error {
 }
 
 func (a *App) start() error {
-	timeout := a.cfg.App.ShutdownTimeout
-	if timeout == 0 {
-		timeout = 10
-	}
-
-	a.stop(time.Duration(timeout)*time.Second, func(ctx context.Context) error {
+	a.stop(a.cfg.App.ShutdownTimeout, func(ctx context.Context) error {
 		return a.srv.Shutdown(ctx)
 	})
 

@@ -32,9 +32,9 @@ func WithVersion(version string) Option {
 	}
 }
 
-func WithTimeout(timeout int) Option {
+func WithTimeout(timeout time.Duration) Option {
 	return func(r *Router) {
-		r.timeout = time.Duration(timeout)
+		r.timeout = timeout
 	}
 }
 
