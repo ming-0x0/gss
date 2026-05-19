@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"time"
 
+	"gss/configs"
+
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 	"gorm.io/gorm/utils"
@@ -24,6 +26,7 @@ type Logger struct {
 	level                     gormlogger.LogLevel
 	slowThreshold             time.Duration
 	ignoreRecordNotFoundError bool
+	dynamicLevel              bool
 }
 
 type LoggerOption func(*Logger)
@@ -42,6 +45,7 @@ func WithIgnoreRecordNotFoundError() LoggerOption {
 
 func WithLoggerLevel(level string) LoggerOption {
 	return func(l *Logger) {
+		l.dynamicLevel = false
 		switch level {
 		case "silent":
 			l.level = gormlogger.Silent
@@ -49,7 +53,7 @@ func WithLoggerLevel(level string) LoggerOption {
 			l.level = gormlogger.Error
 		case "warn":
 			l.level = gormlogger.Warn
-		case "info":
+		case "info", "debug", "trace":
 			l.level = gormlogger.Info
 		}
 	}
@@ -57,9 +61,9 @@ func WithLoggerLevel(level string) LoggerOption {
 
 func NewLogger(opts ...LoggerOption) *Logger {
 	l := &Logger{
-		level:                     gormlogger.Info,
 		slowThreshold:             200 * time.Millisecond,
 		ignoreRecordNotFoundError: false,
+		dynamicLevel:              true,
 	}
 	for _, opt := range opts {
 		opt(l)
@@ -71,26 +75,49 @@ func NewLogger(opts ...LoggerOption) *Logger {
 	return l
 }
 
+func getGormLogLevel(levelStr string) gormlogger.LogLevel {
+	switch levelStr {
+	case "silent":
+		return gormlogger.Silent
+	case "error", "fatal":
+		return gormlogger.Error
+	case "warn":
+		return gormlogger.Warn
+	case "info", "debug", "trace":
+		return gormlogger.Info
+	default:
+		return gormlogger.Info
+	}
+}
+
+func (l *Logger) getLevel() gormlogger.LogLevel {
+	if l.dynamicLevel {
+		return getGormLogLevel(configs.Get().Logger.Level)
+	}
+	return l.level
+}
+
 func (l *Logger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 	clone := *l
 	clone.level = level
+	clone.dynamicLevel = false
 	return &clone
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, args ...any) {
-	if l.level >= gormlogger.Info {
+	if l.getLevel() >= gormlogger.Info {
 		l.log(ctx, Info, msg, args...)
 	}
 }
 
 func (l *Logger) Warn(ctx context.Context, msg string, args ...any) {
-	if l.level >= gormlogger.Warn {
+	if l.getLevel() >= gormlogger.Warn {
 		l.log(ctx, Warn, msg, args...)
 	}
 }
 
 func (l *Logger) Error(ctx context.Context, msg string, args ...any) {
-	if l.level >= gormlogger.Error {
+	if l.getLevel() >= gormlogger.Error {
 		l.log(ctx, Error, msg, args...)
 	}
 }
@@ -109,7 +136,8 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...
 }
 
 func (l *Logger) Trace(ctx context.Context, begin time.Time, fn func() (string, int64), err error) {
-	if l.level <= gormlogger.Silent {
+	level := l.getLevel()
+	if level <= gormlogger.Silent {
 		return
 	}
 
@@ -117,21 +145,21 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, fn func() (string, 
 
 	switch {
 	case err != nil && (!errors.Is(err, gorm.ErrRecordNotFound) || !l.ignoreRecordNotFoundError):
-		if l.level < gormlogger.Error {
+		if level < gormlogger.Error {
 			return
 		}
 		sql, rows := fn()
 		l.trace(ctx, Error, "SQL Query failed", elapsed, sql, rows, err)
 
 	case l.slowThreshold != 0 && elapsed > l.slowThreshold:
-		if l.level < gormlogger.Warn {
+		if level < gormlogger.Warn {
 			return
 		}
 		sql, rows := fn()
 		l.trace(ctx, Warn, "Performed SLOW SQL Query", elapsed, sql, rows, nil)
 
 	default:
-		if l.level < gormlogger.Info {
+		if level < gormlogger.Info {
 			return
 		}
 		sql, rows := fn()

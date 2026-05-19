@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"time"
 
+	"gss/configs"
 	"gss/internal/infrastructure/logger/handler"
 )
 
@@ -114,6 +115,12 @@ func slogLevelName(level slog.Level) string {
 	}
 }
 
+type dynamicLeveler struct{}
+
+func (d dynamicLeveler) Level() slog.Level {
+	return GetLevelFromString(configs.Get().Logger.Level).ToSlogLevel()
+}
+
 type Logger struct {
 	*slog.Logger
 }
@@ -129,7 +136,7 @@ func New(opts ...Option) *Logger {
 	}
 
 	handlerOptions := &slog.HandlerOptions{
-		Level: cfg.level.ToSlogLevel(),
+		Level: dynamicLeveler{},
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			switch a.Key {
 			case slog.TimeKey:

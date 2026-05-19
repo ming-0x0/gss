@@ -3,13 +3,15 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"time"
+
+	"gss/configs"
 
 	"github.com/gin-gonic/gin"
 )
 
-func Timeout(timeout time.Duration) gin.HandlerFunc {
+func Timeout() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		timeout := configs.Get().HTTP.RequestTimeout
 		if timeout <= 0 {
 			c.Next()
 			return

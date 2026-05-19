@@ -11,15 +11,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type Response struct {
+type SuccessResponse[T any] struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-	Error   *Error `json:"error,omitempty"`
+	Data    T      `json:"data,omitempty"`
 }
 
-type Error struct {
-	Details any `json:"details,omitempty"`
+type ErrorResponse struct {
+	Code    int          `json:"code"`
+	Message string       `json:"message"`
+	Error   *ErrorDetail `json:"error,omitempty"`
+}
+
+type ErrorDetail struct {
+	Details string `json:"details,omitempty"`
 }
 
 type BaseHandler struct{}
@@ -32,16 +37,16 @@ func (h *BaseHandler) isDebugMode() bool {
 	return logger.Debug.GTE(logger.GetLevelFromString(configs.Get().Logger.Level))
 }
 
-func (h *BaseHandler) OK(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, Response{
+func OK[T any](c *gin.Context, data T) {
+	c.JSON(http.StatusOK, SuccessResponse[T]{
 		Code:    0,
 		Message: "success",
 		Data:    data,
 	})
 }
 
-func (h *BaseHandler) Created(c *gin.Context, data any) {
-	c.JSON(http.StatusCreated, Response{
+func Created[T any](c *gin.Context, data T) {
+	c.JSON(http.StatusCreated, SuccessResponse[T]{
 		Code:    0,
 		Message: "created",
 		Data:    data,
@@ -53,23 +58,23 @@ func (h *BaseHandler) Err(c *gin.Context, err error) {
 	c.JSON(status, resp)
 }
 
-func (h *BaseHandler) buildErrorResponse(err error) (int, Response) {
+func (h *BaseHandler) buildErrorResponse(err error) (int, ErrorResponse) {
 	var e *errcode.Error
 	if !errors.As(err, &e) {
-		return http.StatusInternalServerError, Response{
+		return http.StatusInternalServerError, ErrorResponse{
 			Code:    errcode.Internal.Int(),
 			Message: "internal error",
 		}
 	}
 
 	status := mapCodeToHTTPStatus(e.Code())
-	resp := Response{
+	resp := ErrorResponse{
 		Code:    e.Code().Int(),
 		Message: e.Message(),
 	}
 
 	if h.isDebugMode() && e.Unwrap() != nil {
-		resp.Error = &Error{Details: e.Unwrap().Error()}
+		resp.Error = &ErrorDetail{Details: e.Unwrap().Error()}
 	}
 
 	return status, resp

@@ -43,7 +43,6 @@ func New(
 	db, err := orm.NewDB(mysqlConn, "mysql", orm.WithLogger(
 		orm.NewLogger(
 			orm.WithLoggerHandler(logger.Handler()),
-			orm.WithLoggerLevel(cfg.Logger.Level),
 		),
 	))
 	if err != nil {
@@ -57,7 +56,6 @@ func New(
 	router, err := deliveryHTTP.NewRouter(
 		deliveryHTTP.WithLogger(logger),
 		deliveryHTTP.WithVersion(version),
-		deliveryHTTP.WithTimeout(cfg.HTTP.RequestTimeout),
 		deliveryHTTP.WithHandlers(handlers...),
 	)
 	if err != nil {

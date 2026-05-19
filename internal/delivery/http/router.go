@@ -5,7 +5,6 @@ import (
 	"gss/internal/delivery/http/middleware"
 	"gss/internal/infrastructure/logger"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/oaswrap/spec/adapter/ginopenapi"
@@ -18,7 +17,6 @@ type Handler interface {
 
 type Router struct {
 	version  string
-	timeout  time.Duration
 	engine   *gin.Engine
 	logger   *logger.Logger
 	handlers []Handler
@@ -29,12 +27,6 @@ type Option func(*Router)
 func WithVersion(version string) Option {
 	return func(r *Router) {
 		r.version = version
-	}
-}
-
-func WithTimeout(timeout time.Duration) Option {
-	return func(r *Router) {
-		r.timeout = timeout
 	}
 }
 
@@ -65,7 +57,7 @@ func NewRouter(
 		middleware.RequestID(),
 		middleware.Recovery(r.logger),
 		middleware.Logger(r.logger),
-		middleware.Timeout(r.timeout),
+		middleware.Timeout(),
 	)
 
 	router := ginopenapi.NewRouter(
