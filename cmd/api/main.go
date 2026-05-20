@@ -3,8 +3,8 @@ package main
 import (
 	"gss/configs"
 	"gss/internal/app"
-	"gss/internal/infrastructure/logger"
 	"gss/pkg/timezone"
+	"log"
 )
 
 var VERSION = "0.0.1"
@@ -12,23 +12,18 @@ var VERSION = "0.0.1"
 func main() {
 	timezone.SetTimeZoneICT()
 
-	err := configs.Load()
-	if err != nil {
-		panic(err)
+	if err := configs.Load(); err != nil {
+		log.Fatalf("failed to load config: %v", err)
 	}
 
 	cfg := configs.Get()
 
-	logger := logger.New(
-		logger.WithLevel(cfg.Logger.Level),
-	)
-
-	app, err := app.New(VERSION, cfg, logger)
+	application, err := app.New(VERSION, cfg)
 	if err != nil {
-		logger.Fatal("An error happened while creating the app", "err", err)
+		log.Fatalf("failed to initialize app: %v", err)
 	}
 
-	if err := app.Run(); err != nil {
-		logger.Fatal("An error happened while running the app", "err", err)
+	if err := application.Run(); err != nil {
+		log.Fatalf("app exited with error: %v", err)
 	}
 }

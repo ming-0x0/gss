@@ -79,7 +79,3 @@ func Open(opts ...option) (*sql.DB, error) {
 
 	return db, nil
 }
-
-func Close(db *sql.DB) error {
-	return db.Close()
-}

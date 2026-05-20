@@ -4,8 +4,10 @@ import (
 	"context"
 	"gss/configs"
 	deliveryHTTP "gss/internal/delivery/http"
+	"gss/internal/delivery/http/handler/auth"
 	"gss/internal/infrastructure/logger"
 	"gss/internal/infrastructure/orm"
+	"gss/internal/repository"
 	"gss/pkg/database/mysql"
 	"net/http"
 	"os"
@@ -26,8 +28,9 @@ type App struct {
 func New(
 	version string,
 	cfg *configs.Config,
-	logger *logger.Logger,
 ) (*App, error) {
+	logger := logger.New()
+
 	logger.Info("Connecting to database...")
 	mysqlConn, err := mysql.Open(
 		mysql.WithDSN(cfg.MySQL.Host, cfg.MySQL.Port, cfg.MySQL.User, cfg.MySQL.Password, cfg.MySQL.Database),
@@ -49,9 +52,12 @@ func New(
 		return nil, err
 	}
 
-	_ = db // TODO: inject db into repositories and handlers
+	userRepo := repository.NewUserRepository(db, logger)
+	authHandler := auth.NewAuthHandler(userRepo, logger)
 
-	handlers := []deliveryHTTP.Handler{}
+	handlers := []deliveryHTTP.Handler{
+		authHandler,
+	}
 
 	router, err := deliveryHTTP.NewRouter(
 		deliveryHTTP.WithLogger(logger),

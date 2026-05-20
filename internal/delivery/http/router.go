@@ -2,7 +2,6 @@ package http
 
 import (
 	"fmt"
-	"gss/internal/delivery/http/middleware"
 	"gss/internal/infrastructure/logger"
 	"net/http"
 
@@ -45,23 +44,16 @@ func WithHandlers(handlers ...Handler) Option {
 func NewRouter(
 	opts ...Option,
 ) (*Router, error) {
-	r := &Router{}
+	r := &Router{
+		engine: gin.New(),
+	}
+
 	for _, opt := range opts {
 		opt(r)
 	}
 
-	engine := gin.New()
-	r.engine = engine
-
-	engine.Use(
-		middleware.RequestID(),
-		middleware.Recovery(r.logger),
-		middleware.Logger(r.logger),
-		middleware.Timeout(),
-	)
-
 	router := ginopenapi.NewRouter(
-		engine,
+		r.engine,
 		option.WithSwaggerUI(),
 		option.WithTitle("GSS API"),
 		option.WithVersion(r.version),

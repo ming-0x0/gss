@@ -107,3 +107,20 @@ func WithCode(code ErrorCode) *Error {
 		code: code,
 	}
 }
+
+// FromError extracts the error code, message, and details from any error.
+func FromError(err error) (code ErrorCode, msg string, details string) {
+	if err == nil {
+		return OK, OK.String(), ""
+	}
+
+	if target, ok := errors.AsType[*Error](err); ok {
+		var details string
+		if target.err != nil {
+			details = target.err.Error()
+		}
+		return target.Code(), target.Message(), details
+	}
+
+	return Internal, "Internal Server Error", err.Error()
+}
