@@ -7,11 +7,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *AuthHandler) Login(c *gin.Context) {
+func (h *Handler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		http.BadRequest(c, err)
+		return
+	}
+
+	_, err = h.userRepo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		http.Error(c, err, "Email not found")
 		return
 	}
 
@@ -20,3 +26,5 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		RefreshToken: "refresh_token",
 	})
 }
+
+

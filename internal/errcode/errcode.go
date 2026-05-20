@@ -29,6 +29,15 @@ func (e ErrorCode) Int() int {
 	return int(e)
 }
 
+func (e ErrorCode) IsServerError() bool {
+	switch e {
+	case Internal, Unknown, Unavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 type Error struct {
 	code ErrorCode
 	msg  string
@@ -119,7 +128,14 @@ func FromError(err error) (code ErrorCode, msg string, details string) {
 		if target.err != nil {
 			details = target.err.Error()
 		}
-		return target.Code(), target.Message(), details
+
+		code := target.Code()
+		msg := target.Message()
+		if code.IsServerError() {
+			return Internal, "Internal Server Error", details
+		}
+
+		return code, msg, details
 	}
 
 	return Internal, "Internal Server Error", err.Error()

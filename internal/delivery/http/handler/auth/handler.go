@@ -10,22 +10,22 @@ import (
 	"github.com/oaswrap/spec/option"
 )
 
-type AuthHandler struct {
+type Handler struct {
 	userRepo domain.UserRepositoryInterface
 	logger   *logger.Logger
 }
 
-func NewAuthHandler(
+func NewHandler(
 	userRepo domain.UserRepositoryInterface,
 	logger *logger.Logger,
-) *AuthHandler {
-	return &AuthHandler{
+) *Handler {
+	return &Handler{
 		userRepo: userRepo,
 		logger:   logger,
 	}
 }
 
-func (h *AuthHandler) RegisterRoutes(r ginopenapi.Router) {
+func (h *Handler) RegisterRoutes(r ginopenapi.Router) {
 	v1 := r.Group("/v1")
 
 	auth := v1.Group("/auth")

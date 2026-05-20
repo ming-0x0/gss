@@ -53,7 +53,7 @@ func New(
 	}
 
 	userRepo := repository.NewUserRepository(db, logger)
-	authHandler := auth.NewAuthHandler(userRepo, logger)
+	authHandler := auth.NewHandler(userRepo, logger)
 
 	handlers := []deliveryHTTP.Handler{
 		authHandler,

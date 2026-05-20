@@ -37,8 +37,13 @@ func OK[T any](c *gin.Context, msg string, data T) {
 	})
 }
 
-func Error(c *gin.Context, err error) {
-	errCode, msg, details := errcode.FromError(err)
+func Error(c *gin.Context, err error, customMsg ...string) {
+	errCode, defaultMsg, details := errcode.FromError(err)
+
+	msg := defaultMsg
+	if !errCode.IsServerError() && len(customMsg) > 0 && customMsg[0] != "" {
+		msg = customMsg[0]
+	}
 
 	var errDetails *ErrorDetails
 	if isDebugMode() && details != "" {
