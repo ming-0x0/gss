@@ -38,29 +38,26 @@ func OK[T any](c *gin.Context, msg string, data T) {
 }
 
 func Error(c *gin.Context, err error, customMsg ...string) {
-	errCode, defaultMsg, details := errcode.FromError(err)
+	code, msg, details := errcode.FromError(err)
 
-	msg := defaultMsg
-	if !errCode.IsServerError() && len(customMsg) > 0 && customMsg[0] != "" {
+	if !code.IsServerError() && len(customMsg) > 0 && customMsg[0] != "" {
 		msg = customMsg[0]
 	}
 
-	var errDetails *ErrorDetails
-	if isDebugMode() && details != "" {
-		errDetails = &ErrorDetails{
-			Details: details,
-		}
+	resp := ErrorResponse{
+		Code:    code,
+		Message: msg,
 	}
 
-	c.JSON(http.StatusOK, ErrorResponse{
-		Code:    errCode,
-		Message: msg,
-		Error:   errDetails,
-	})
+	if isDebugMode() && details != "" {
+		resp.Error = &ErrorDetails{Details: details}
+	}
+
+	c.AbortWithStatusJSON(http.StatusOK, resp)
 }
 
 func InternalServerError(c *gin.Context, err error) {
-	Error(c, errcode.WithMessage(errcode.Internal, "Internal Server Error", err))
+	Error(c, errcode.WithCause(errcode.Internal, err))
 }
 
 func BadRequest(c *gin.Context, err error) {

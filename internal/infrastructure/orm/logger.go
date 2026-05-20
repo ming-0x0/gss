@@ -127,7 +127,7 @@ func (l *Logger) log(ctx context.Context, level slog.Level, msg string, args ...
 		return
 	}
 	var pcs [1]uintptr
-	runtime.Callers(3, pcs[:])
+	runtime.Callers(2, pcs[:])
 	r := slog.NewRecord(time.Now(), level, fmt.Sprintf(msg, args...), pcs[0])
 	if fn := runtime.FuncForPC(pcs[0]); fn != nil {
 		r.AddAttrs(slog.String("func", fn.Name()))
@@ -173,7 +173,7 @@ func (l *Logger) trace(ctx context.Context, level slog.Level, msg string, elapse
 	}
 
 	var pcs [1]uintptr
-	runtime.Callers(3, pcs[:])
+	runtime.Callers(2, pcs[:])
 
 	attrs := []slog.Attr{
 		slog.Duration("duration", elapsed),
