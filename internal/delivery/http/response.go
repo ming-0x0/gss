@@ -1,10 +1,11 @@
 package http
 
 import (
+	"net/http"
+
 	"gss/configs"
 	"gss/internal/errcode"
 	"gss/internal/infrastructure/logger"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,40 +27,52 @@ type ErrorDetails struct {
 }
 
 func isDebugMode() bool {
-	return logger.Debug.GTE(logger.GetLevelFromString(configs.Get().Logger.Level))
+	return logger.Debug.GTE(
+		logger.GetLevelFromString(configs.Get().Logger.Level),
+	)
 }
 
-func OK[T any](c *gin.Context, msg string, data T) {
+func OK[T any](c *gin.Context, message string, data T) {
 	c.JSON(http.StatusOK, SuccessResponse[T]{
 		Code:    errcode.OK,
-		Message: msg,
+		Message: message,
 		Data:    data,
 	})
 }
 
-func Error(c *gin.Context, err error, customMsg ...string) {
-	code, msg, details := errcode.FromError(err)
+func abort(
+	c *gin.Context,
+	err error,
+	overrideMessage string,
+) {
+	code, message, details := errcode.FromError(err)
 
-	if !code.IsServerError() && len(customMsg) > 0 && customMsg[0] != "" {
-		msg = customMsg[0]
+	if !code.IsServerError() && overrideMessage != "" {
+		message = overrideMessage
 	}
 
 	resp := ErrorResponse{
 		Code:    code,
-		Message: msg,
+		Message: message,
 	}
 
 	if isDebugMode() && details != "" {
-		resp.Error = &ErrorDetails{Details: details}
+		resp.Error = &ErrorDetails{
+			Details: details,
+		}
 	}
 
-	c.AbortWithStatusJSON(http.StatusOK, resp)
+	c.AbortWithStatusJSON(code.HTTPStatusCode(), resp)
+}
+
+func Error(c *gin.Context, err error, overrideMessage string) {
+	abort(c, err, overrideMessage)
 }
 
 func InternalServerError(c *gin.Context, err error) {
-	Error(c, errcode.WithCause(errcode.Internal, err))
+	Error(c, errcode.WithCause(errcode.Internal, err), "")
 }
 
 func BadRequest(c *gin.Context, err error) {
-	Error(c, errcode.WithCause(errcode.InvalidArgument, err))
+	Error(c, errcode.WithCause(errcode.InvalidArgument, err), "")
 }

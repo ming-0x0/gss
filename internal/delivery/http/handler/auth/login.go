@@ -17,7 +17,7 @@ func (h *Handler) Login(c *gin.Context) {
 
 	_, err = h.userRepo.FindByEmail(c.Request.Context(), req.Email)
 	if err != nil {
-		http.Error(c, err, "Email not found")
+		http.Error(c, err, "Invalid email or password")
 		return
 	}
 
@@ -26,5 +26,3 @@ func (h *Handler) Login(c *gin.Context) {
 		RefreshToken: "refresh_token",
 	})
 }
-
-

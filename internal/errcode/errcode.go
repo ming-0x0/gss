@@ -1,6 +1,9 @@
 package errcode
 
-import "errors"
+import (
+	"errors"
+	"net/http"
+)
 
 type ErrorCode int
 
@@ -25,16 +28,40 @@ const (
 	Unauthenticated
 )
 
-func (e ErrorCode) Int() int {
-	return int(e)
-}
-
 func (e ErrorCode) IsServerError() bool {
 	switch e {
-	case Internal, Unknown, Unavailable:
+	case Internal, Unavailable, DeadlineExceeded, DataLoss, Unknown, Unimplemented:
 		return true
 	default:
 		return false
+	}
+}
+
+func (e ErrorCode) HTTPStatusCode() int {
+	switch e {
+	case OK:
+		return http.StatusOK
+
+	// HTTP status code 4xx
+	case InvalidArgument:
+		return http.StatusBadRequest
+	case Unauthenticated:
+		return http.StatusUnauthorized
+	case PermissionDenied:
+		return http.StatusForbidden
+	case ResourceExhausted:
+		return http.StatusTooManyRequests
+
+	// HTTP status code 5xx
+	case Internal, Unavailable, DeadlineExceeded, DataLoss, Unknown, Unimplemented:
+		return http.StatusInternalServerError
+
+	// Return 200 because these errors are handled as business errors and should still trigger toast messages on the client
+	case NotFound, AlreadyExists, Aborted, FailedPrecondition, OutOfRange:
+		return http.StatusOK
+
+	default:
+		return http.StatusInternalServerError
 	}
 }
 

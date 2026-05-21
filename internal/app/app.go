@@ -9,7 +9,6 @@ import (
 	"gss/internal/infrastructure/orm"
 	"gss/internal/repository"
 	"gss/pkg/database/mysql"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,7 +30,6 @@ func New(
 	cfg *configs.Config,
 ) (*App, error) {
 	logger := logger.New()
-	slog.SetDefault(logger.Logger)
 
 	logger.Info("Connecting to database...")
 	mysqlConn, err := mysql.Open(
