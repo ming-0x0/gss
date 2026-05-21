@@ -42,8 +42,8 @@ func OK[T any](c *gin.Context, message string, data T) {
 
 func abort(
 	c *gin.Context,
-	err error,
 	overrideMessage string,
+	err error,
 ) {
 	code, message, details := errcode.FromError(err)
 
@@ -65,14 +65,14 @@ func abort(
 	c.AbortWithStatusJSON(code.HTTPStatusCode(), resp)
 }
 
-func Error(c *gin.Context, err error, overrideMessage string) {
-	abort(c, err, overrideMessage)
+func Error(c *gin.Context, message string, err error) {
+	abort(c, message, err)
 }
 
 func InternalServerError(c *gin.Context, err error) {
-	Error(c, errcode.WithCause(errcode.Internal, err), "")
+	Error(c, "", errcode.WithCause(errcode.Internal, err))
 }
 
 func BadRequest(c *gin.Context, err error) {
-	Error(c, errcode.WithCause(errcode.InvalidArgument, err), "")
+	Error(c, "", errcode.WithCause(errcode.InvalidArgument, err))
 }

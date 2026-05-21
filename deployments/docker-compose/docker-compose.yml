@@ -5,6 +5,7 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
     volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
       - mysql_data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]

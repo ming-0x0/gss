@@ -149,25 +149,25 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, fn func() (string, 
 			return
 		}
 		sql, rows := fn()
-		l.trace(ctx, Error, "SQL Query failed", elapsed, sql, rows, err)
+		l.trace(ctx, Error, "SQL Query failed", elapsed.String(), sql, rows, err)
 
 	case l.slowThreshold != 0 && elapsed > l.slowThreshold:
 		if level < gormlogger.Warn {
 			return
 		}
 		sql, rows := fn()
-		l.trace(ctx, Warn, "Performed SLOW SQL Query", elapsed, sql, rows, nil)
+		l.trace(ctx, Warn, "Performed SLOW SQL Query", elapsed.String(), sql, rows, nil)
 
 	default:
 		if level < gormlogger.Info {
 			return
 		}
 		sql, rows := fn()
-		l.trace(ctx, Info, "Performed SQL Query", elapsed, sql, rows, nil)
+		l.trace(ctx, Info, "Performed SQL Query", elapsed.String(), sql, rows, nil)
 	}
 }
 
-func (l *Logger) trace(ctx context.Context, level slog.Level, msg string, elapsed time.Duration, sql string, rows int64, err error) {
+func (l *Logger) trace(ctx context.Context, level slog.Level, msg string, elapsed string, sql string, rows int64, err error) {
 	if !l.handler.Enabled(ctx, level) {
 		return
 	}
@@ -176,7 +176,7 @@ func (l *Logger) trace(ctx context.Context, level slog.Level, msg string, elapse
 	runtime.Callers(2, pcs[:])
 
 	attrs := []slog.Attr{
-		slog.Duration("duration", elapsed),
+		slog.String("duration", elapsed),
 		slog.String("sql", sql),
 		slog.String("service", "database"),
 		slog.String("file", utils.FileWithLineNum()),

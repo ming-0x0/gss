@@ -17,7 +17,7 @@ func (h *Handler) Login(c *gin.Context) {
 
 	_, err = h.userRepo.FindByEmail(c.Request.Context(), req.Email)
 	if err != nil {
-		http.Error(c, err, "Invalid email or password")
+		http.Error(c, "Invalid email or password", err)
 		return
 	}
 
