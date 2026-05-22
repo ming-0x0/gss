@@ -2,6 +2,8 @@ services:
   mysql:
     ports:
       - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
 
   minio:
     ports:

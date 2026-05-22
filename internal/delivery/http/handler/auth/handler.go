@@ -26,11 +26,9 @@ func NewHandler(
 }
 
 func (h *Handler) RegisterRoutes(r ginopenapi.Router) {
-	v1 := r.Group("/v1")
+	authV1 := r.Group("/v1/auth")
 
-	auth := v1.Group("/auth")
-
-	auth.POST("/login", h.Login).With(
+	authV1.POST("/login", h.Login).With(
 		option.Tags("auth"),
 		option.Summary("Login"),
 		option.Request(new(dto.LoginRequest)),
