@@ -1,0 +1,30 @@
+services:
+  doco-cd:
+    container_name: doco-cd
+    image: ghcr.io/kimdre/doco-cd:latest
+    restart: unless-stopped
+    ports:
+      - "8080:80"     # Webhook listener endpoint: http://localhost:8080/v1/webhook
+      - "9120:9120"   # Prometheus metrics: http://localhost:9120/metrics
+    environment:
+      TZ: Asia/Ho_Chi_Minh
+      # Đặt mã bí mật webhook ở đây. Git Provider sẽ gửi mã này trong payload để xác thực.
+      WEBHOOK_SECRET: my_super_secret_webhook_key_12345
+      # Nếu Repository của bạn là private, hãy điền Git Access Token (Personal Access Token) ở đây.
+      # GIT_ACCESS_TOKEN: your_personal_access_token_here
+    volumes:
+      # Mount Docker socket để doco-cd có thể tương tác với Docker daemon và chạy dự án của bạn ở local
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Lưu dữ liệu cấu hình, bản sao kho code đã clone của doco-cd vào volume
+      - doco_data:/data
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: [ "CMD", "/doco-cd", "healthcheck" ]
+      start_period: 15s
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  doco_data:
