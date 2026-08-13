@@ -1,4 +1,4 @@
-package workerpool
+package background
 
 import "sync/atomic"
 
@@ -11,7 +11,7 @@ type metrics struct {
 	panicked  atomic.Int64
 }
 
-// Snapshot is a point-in-time copy of pool metrics.
+// Snapshot is a point-in-time copy of background runner metrics.
 type Snapshot struct {
 	Active    int64
 	QueueLen  int

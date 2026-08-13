@@ -1,4 +1,4 @@
-package workerpool_test
+package background_test
 
 import (
 	"context"
@@ -9,72 +9,72 @@ import (
 	"testing"
 	"time"
 
-	"gss/pkg/workerpool"
+	"gss/pkg/background"
 )
 
-func TestNewPool(t *testing.T) {
+func TestNewRunner(t *testing.T) {
 	t.Run("default options", func(t *testing.T) {
-		pool, err := workerpool.New()
+		runner, err := background.New()
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		defer pool.Stop()
+		defer runner.Stop()
 
-		if pool.Size() <= 0 {
-			t.Errorf("expected worker count > 0, got %d", pool.Size())
+		if runner.Size() <= 0 {
+			t.Errorf("expected worker count > 0, got %d", runner.Size())
 		}
 	})
 
 	t.Run("custom options", func(t *testing.T) {
-		pool, err := workerpool.New(
-			workerpool.WithWorkers(4),
-			workerpool.WithQueueSize(50),
+		runner, err := background.New(
+			background.WithWorkers(4),
+			background.WithQueueSize(50),
 		)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		defer pool.Stop()
+		defer runner.Stop()
 
-		if pool.Size() != 4 {
-			t.Errorf("expected 4 workers, got %d", pool.Size())
+		if runner.Size() != 4 {
+			t.Errorf("expected 4 workers, got %d", runner.Size())
 		}
 	})
 
 	t.Run("invalid worker count", func(t *testing.T) {
-		_, err := workerpool.New(workerpool.WithWorkers(0))
-		if !errors.Is(err, workerpool.ErrInvalidWorkerCount) {
+		_, err := background.New(background.WithWorkers(0))
+		if !errors.Is(err, background.ErrInvalidWorkerCount) {
 			t.Errorf("expected ErrInvalidWorkerCount, got %v", err)
 		}
 	})
 
 	t.Run("invalid queue size", func(t *testing.T) {
-		_, err := workerpool.New(workerpool.WithQueueSize(-1))
-		if !errors.Is(err, workerpool.ErrInvalidQueueSize) {
+		_, err := background.New(background.WithQueueSize(-1))
+		if !errors.Is(err, background.ErrInvalidQueueSize) {
 			t.Errorf("expected ErrInvalidQueueSize, got %v", err)
 		}
 	})
 
 	t.Run("invalid task timeout", func(t *testing.T) {
-		_, err := workerpool.New(workerpool.WithTaskTimeout(-time.Second))
-		if !errors.Is(err, workerpool.ErrInvalidTaskTimeout) {
+		_, err := background.New(background.WithTaskTimeout(-time.Second))
+		if !errors.Is(err, background.ErrInvalidTaskTimeout) {
 			t.Errorf("expected ErrInvalidTaskTimeout, got %v", err)
 		}
 	})
 }
 
 func TestSubmitAndExecute(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(4), workerpool.WithQueueSize(100))
+	runner, err := background.New(background.WithWorkers(4), background.WithQueueSize(100))
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	const taskCount = 50
 	var completedCounter atomic.Int64
 
 	parentCtx := context.Background()
 	for i := 0; i < taskCount; i++ {
-		err := pool.Submit(parentCtx, func(ctx context.Context) error {
+		err := runner.Submit(parentCtx, func(ctx context.Context) error {
 			time.Sleep(2 * time.Millisecond)
 			completedCounter.Add(1)
 			return nil
@@ -87,7 +87,7 @@ func TestSubmitAndExecute(t *testing.T) {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := pool.Shutdown(shutdownCtx); err != nil {
+	if err := runner.Shutdown(shutdownCtx); err != nil {
 		t.Fatalf("shutdown failed: %v", err)
 	}
 
@@ -95,24 +95,24 @@ func TestSubmitAndExecute(t *testing.T) {
 		t.Errorf("expected %d completed tasks, got %d", taskCount, completedCounter.Load())
 	}
 
-	stats := pool.Stats()
+	stats := runner.Stats()
 	if stats.Completed != taskCount {
 		t.Errorf("expected stats completed %d, got %d", taskCount, stats.Completed)
 	}
 }
 
 func TestSubmitWithResult(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(2))
+	runner, err := background.New(background.WithWorkers(2))
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	parentCtx := context.Background()
 
 	t.Run("success result", func(t *testing.T) {
-		resultChan, err := workerpool.SubmitWithResult(pool, parentCtx, func(ctx context.Context) (string, error) {
-			return "hello worker pool", nil
+		resultChan, err := background.SubmitWithResult(runner, parentCtx, func(ctx context.Context) (string, error) {
+			return "hello background runner", nil
 		})
 		if err != nil {
 			t.Fatalf("submit failed: %v", err)
@@ -122,14 +122,14 @@ func TestSubmitWithResult(t *testing.T) {
 		if res.Err != nil {
 			t.Fatalf("expected no error, got %v", res.Err)
 		}
-		if res.Value != "hello worker pool" {
-			t.Errorf("expected 'hello worker pool', got %q", res.Value)
+		if res.Value != "hello background runner" {
+			t.Errorf("expected 'hello background runner', got %q", res.Value)
 		}
 	})
 
 	t.Run("error result", func(t *testing.T) {
 		expectedErr := errors.New("custom error")
-		resultChan, err := workerpool.SubmitWithResult(pool, parentCtx, func(ctx context.Context) (int, error) {
+		resultChan, err := background.SubmitWithResult(runner, parentCtx, func(ctx context.Context) (int, error) {
 			return 0, expectedErr
 		})
 		if err != nil {
@@ -155,25 +155,25 @@ func TestPanicRecovery(t *testing.T) {
 		mu.Unlock()
 	}
 
-	pool, err := workerpool.New(
-		workerpool.WithWorkers(2),
-		workerpool.WithPanicHandler(panicHandler),
+	runner, err := background.New(
+		background.WithWorkers(2),
+		background.WithPanicHandler(panicHandler),
 	)
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	parentCtx := context.Background()
 
 	// Submit task that panics
-	_ = pool.Submit(parentCtx, func(ctx context.Context) error {
+	_ = runner.Submit(parentCtx, func(ctx context.Context) error {
 		panic("boom!")
 	})
 
-	// Submit normal task afterwards to prove pool is still healthy
+	// Submit normal task afterwards to prove runner is still healthy
 	var normalExecuted atomic.Bool
-	_ = pool.Submit(parentCtx, func(ctx context.Context) error {
+	_ = runner.Submit(parentCtx, func(ctx context.Context) error {
 		normalExecuted.Store(true)
 		return nil
 	})
@@ -181,7 +181,7 @@ func TestPanicRecovery(t *testing.T) {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_ = pool.Shutdown(shutdownCtx)
+	_ = runner.Shutdown(shutdownCtx)
 
 	if !panicHandled.Load() {
 		t.Error("expected panic handler to be invoked")
@@ -197,41 +197,41 @@ func TestPanicRecovery(t *testing.T) {
 		t.Error("expected normal task to execute after panic recovery")
 	}
 
-	if pool.Stats().Failed != 1 {
-		t.Errorf("expected 1 failed task from panic, got %d", pool.Stats().Failed)
+	if runner.Stats().Failed != 1 {
+		t.Errorf("expected 1 failed task from panic, got %d", runner.Stats().Failed)
 	}
 }
 
 func TestTrySubmit(t *testing.T) {
-	pool, err := workerpool.New(
-		workerpool.WithWorkers(1),
-		workerpool.WithQueueSize(1),
+	runner, err := background.New(
+		background.WithWorkers(1),
+		background.WithQueueSize(1),
 	)
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	parentCtx := context.Background()
 	blockChan := make(chan struct{})
 
 	// Task 1: occupies the single worker
-	_ = pool.Submit(parentCtx, func(ctx context.Context) error {
+	_ = runner.Submit(parentCtx, func(ctx context.Context) error {
 		<-blockChan
 		return nil
 	})
 
 	// Task 2: fills up the queue of capacity 1
-	_ = pool.Submit(parentCtx, func(ctx context.Context) error {
+	_ = runner.Submit(parentCtx, func(ctx context.Context) error {
 		return nil
 	})
 
 	// Task 3: should fail with ErrQueueFull
-	err = pool.TrySubmit(parentCtx, func(ctx context.Context) error {
+	err = runner.TrySubmit(parentCtx, func(ctx context.Context) error {
 		return nil
 	})
 
-	if !errors.Is(err, workerpool.ErrQueueFull) {
+	if !errors.Is(err, background.ErrQueueFull) {
 		t.Errorf("expected ErrQueueFull, got %v", err)
 	}
 
@@ -239,68 +239,68 @@ func TestTrySubmit(t *testing.T) {
 }
 
 func TestSubmitNilTask(t *testing.T) {
-	pool, err := workerpool.New()
+	runner, err := background.New()
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
-	err = pool.Submit(context.Background(), nil)
-	if !errors.Is(err, workerpool.ErrNilTask) {
+	err = runner.Submit(context.Background(), nil)
+	if !errors.Is(err, background.ErrNilTask) {
 		t.Errorf("expected ErrNilTask, got %v", err)
 	}
 }
 
 func TestSubmitRejectsAlreadyCanceledContext(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(1), workerpool.WithQueueSize(1))
+	runner, err := background.New(background.WithWorkers(1), background.WithQueueSize(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	cancelCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if err := pool.Submit(cancelCtx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := runner.Submit(cancelCtx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Submit error = %v, want context.Canceled", err)
 	}
-	if err := pool.TrySubmit(cancelCtx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
+	if err := runner.TrySubmit(cancelCtx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("TrySubmit error = %v, want context.Canceled", err)
 	}
-	if pool.Stats().Submitted != 0 {
-		t.Fatalf("Submitted = %d, want 0", pool.Stats().Submitted)
+	if runner.Stats().Submitted != 0 {
+		t.Fatalf("Submitted = %d, want 0", runner.Stats().Submitted)
 	}
 }
 
-func TestSubmitClosedPool(t *testing.T) {
-	pool, err := workerpool.New()
+func TestSubmitClosedRunner(t *testing.T) {
+	runner, err := background.New()
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
 
-	pool.Stop()
+	runner.Stop()
 
-	err = pool.Submit(context.Background(), func(ctx context.Context) error {
+	err = runner.Submit(context.Background(), func(ctx context.Context) error {
 		return nil
 	})
 
-	if !errors.Is(err, workerpool.ErrPoolClosed) {
-		t.Errorf("expected ErrPoolClosed, got %v", err)
+	if !errors.Is(err, background.ErrClosed) {
+		t.Errorf("expected ErrClosed, got %v", err)
 	}
 }
 
 func TestWithTaskTimeout(t *testing.T) {
-	pool, err := workerpool.New(
-		workerpool.WithWorkers(1),
-		workerpool.WithTaskTimeout(20*time.Millisecond),
+	runner, err := background.New(
+		background.WithWorkers(1),
+		background.WithTaskTimeout(20*time.Millisecond),
 	)
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	errChan := make(chan error, 1)
-	_ = pool.Submit(context.Background(), func(ctx context.Context) error {
+	_ = runner.Submit(context.Background(), func(ctx context.Context) error {
 		select {
 		case <-time.After(100 * time.Millisecond):
 			errChan <- nil
@@ -317,18 +317,18 @@ func TestWithTaskTimeout(t *testing.T) {
 }
 
 func TestSubmittingContextCancelsRunningTask(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(1))
+	runner, err := background.New(background.WithWorkers(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
 	parentCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startedChan := make(chan struct{})
 	finishedChan := make(chan error, 1)
 
-	if err := pool.Submit(parentCtx, func(taskCtx context.Context) error {
+	if err := runner.Submit(parentCtx, func(taskCtx context.Context) error {
 		close(startedChan)
 		<-taskCtx.Done()
 		finishedChan <- taskCtx.Err()
@@ -351,7 +351,7 @@ func TestSubmittingContextCancelsRunningTask(t *testing.T) {
 }
 
 func TestStopCancelsTaskAndSkipsQueuedWork(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(1), workerpool.WithQueueSize(1))
+	runner, err := background.New(background.WithWorkers(1), background.WithQueueSize(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestStopCancelsTaskAndSkipsQueuedWork(t *testing.T) {
 	cancelledChan := make(chan struct{})
 	var queuedRan atomic.Bool
 
-	if err := pool.Submit(nil, func(ctx context.Context) error {
+	if err := runner.Submit(nil, func(ctx context.Context) error {
 		close(startedChan)
 		<-ctx.Done()
 		close(cancelledChan)
@@ -371,14 +371,14 @@ func TestStopCancelsTaskAndSkipsQueuedWork(t *testing.T) {
 
 	<-startedChan
 
-	if err := pool.Submit(context.Background(), func(context.Context) error {
+	if err := runner.Submit(context.Background(), func(context.Context) error {
 		queuedRan.Store(true)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	pool.Stop()
+	runner.Stop()
 
 	select {
 	case <-cancelledChan:
@@ -392,7 +392,7 @@ func TestStopCancelsTaskAndSkipsQueuedWork(t *testing.T) {
 }
 
 func TestShutdownUnblocksConcurrentSubmit(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(1), workerpool.WithQueueSize(0))
+	runner, err := background.New(background.WithWorkers(1), background.WithQueueSize(0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +400,7 @@ func TestShutdownUnblocksConcurrentSubmit(t *testing.T) {
 	blockChan := make(chan struct{})
 	startedChan := make(chan struct{})
 
-	if err := pool.Submit(context.Background(), func(context.Context) error {
+	if err := runner.Submit(context.Background(), func(context.Context) error {
 		close(startedChan)
 		<-blockChan
 		return nil
@@ -411,18 +411,18 @@ func TestShutdownUnblocksConcurrentSubmit(t *testing.T) {
 
 	submitDoneChan := make(chan error, 1)
 	go func() {
-		submitDoneChan <- pool.Submit(context.Background(), func(context.Context) error { return nil })
+		submitDoneChan <- runner.Submit(context.Background(), func(context.Context) error { return nil })
 	}()
 
 	shutdownDoneChan := make(chan error, 1)
 	go func() {
-		shutdownDoneChan <- pool.Shutdown(context.Background())
+		shutdownDoneChan <- runner.Shutdown(context.Background())
 	}()
 
 	select {
 	case err := <-submitDoneChan:
-		if !errors.Is(err, workerpool.ErrPoolClosed) {
-			t.Fatalf("Submit error = %v, want %v", err, workerpool.ErrPoolClosed)
+		if !errors.Is(err, background.ErrClosed) {
+			t.Fatalf("Submit error = %v, want %v", err, background.ErrClosed)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Shutdown did not release blocked Submit")
@@ -441,7 +441,7 @@ func TestShutdownUnblocksConcurrentSubmit(t *testing.T) {
 
 func TestConcurrentSubmitAndStop(t *testing.T) {
 	for i := 0; i < 25; i++ {
-		pool, err := workerpool.New(workerpool.WithWorkers(2), workerpool.WithQueueSize(1))
+		runner, err := background.New(background.WithWorkers(2), background.WithQueueSize(1))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -454,28 +454,28 @@ func TestConcurrentSubmitAndStop(t *testing.T) {
 			go func() {
 				defer submittersWg.Done()
 				<-startChan
-				_ = pool.Submit(context.Background(), func(context.Context) error { return nil })
+				_ = runner.Submit(context.Background(), func(context.Context) error { return nil })
 			}()
 		}
 
 		close(startChan)
-		pool.Stop()
+		runner.Stop()
 		submittersWg.Wait()
 
-		if err := pool.Submit(context.Background(), func(context.Context) error { return nil }); !errors.Is(err, workerpool.ErrPoolClosed) {
-			t.Fatalf("Submit after Stop error = %v, want %v", err, workerpool.ErrPoolClosed)
+		if err := runner.Submit(context.Background(), func(context.Context) error { return nil }); !errors.Is(err, background.ErrClosed) {
+			t.Fatalf("Submit after Stop error = %v, want %v", err, background.ErrClosed)
 		}
 	}
 }
 
 func TestSubmitWithResultPanicReturnsResult(t *testing.T) {
-	pool, err := workerpool.New(workerpool.WithWorkers(1))
+	runner, err := background.New(background.WithWorkers(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Stop()
+	defer runner.Stop()
 
-	resultsChan, err := workerpool.SubmitWithResult(pool, context.Background(), func(context.Context) (int, error) {
+	resultsChan, err := background.SubmitWithResult(runner, context.Background(), func(context.Context) (int, error) {
 		panic("boom")
 	})
 	if err != nil {
@@ -488,19 +488,19 @@ func TestSubmitWithResultPanicReturnsResult(t *testing.T) {
 	}
 }
 
-func BenchmarkWorkerPoolVsGoroutines(b *testing.B) {
-	pool, _ := workerpool.New(
-		workerpool.WithWorkers(8),
-		workerpool.WithQueueSize(1000),
+func BenchmarkBackgroundVsGoroutines(b *testing.B) {
+	runner, _ := background.New(
+		background.WithWorkers(8),
+		background.WithQueueSize(1000),
 	)
-	defer pool.Stop()
+	defer runner.Stop()
 
 	parentCtx := context.Background()
 
-	b.Run("WorkerPool", func(b *testing.B) {
+	b.Run("BackgroundRunner", func(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = pool.Submit(parentCtx, func(ctx context.Context) error {
+			_ = runner.Submit(parentCtx, func(ctx context.Context) error {
 				return nil
 			})
 		}

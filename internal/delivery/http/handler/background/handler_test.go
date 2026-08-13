@@ -1,4 +1,4 @@
-package workerpool_test
+package background_test
 
 import (
 	"bytes"
@@ -9,41 +9,41 @@ import (
 	"time"
 
 	"gss/internal/delivery/http/handler"
-	wpHandler "gss/internal/delivery/http/handler/workerpool"
+	bgHandler "gss/internal/delivery/http/handler/background"
 	"gss/internal/infrastructure/logger"
-	"gss/pkg/workerpool"
+	"gss/pkg/background"
 
 	"github.com/gin-gonic/gin"
 	"github.com/oaswrap/spec/adapter/ginopenapi"
 )
 
-func setupTestRouter(t *testing.T) (*gin.Engine, *workerpool.Pool) {
+func setupTestRouter(t *testing.T) (*gin.Engine, *background.Runner) {
 	gin.SetMode(gin.TestMode)
 
-	wp, err := workerpool.New(
-		workerpool.WithWorkers(2),
-		workerpool.WithQueueSize(5),
+	bg, err := background.New(
+		background.WithWorkers(2),
+		background.WithQueueSize(5),
 	)
 	if err != nil {
-		t.Fatalf("failed to create pool: %v", err)
+		t.Fatalf("failed to create runner: %v", err)
 	}
 
 	l := logger.New()
 	baseHandler := handler.NewHandler("debug")
-	h := wpHandler.NewHandler(baseHandler, wp, l)
+	h := bgHandler.NewHandler(baseHandler, bg, l)
 
 	engine := gin.New()
 	router := ginopenapi.NewRouter(engine)
 	h.RegisterRoutes(router)
 
-	return engine, wp
+	return engine, bg
 }
 
-func TestWorkerPoolEndpoints(t *testing.T) {
-	engine, wp := setupTestRouter(t)
-	defer wp.Stop()
+func TestBackgroundEndpoints(t *testing.T) {
+	engine, bg := setupTestRouter(t)
+	defer bg.Stop()
 
-	t.Run("POST /api/v1/workerpool/submit", func(t *testing.T) {
+	t.Run("POST /api/v1/background/submit", func(t *testing.T) {
 		body := map[string]any{
 			"task_name": "test_async_job",
 			"delay_ms":  10,
@@ -51,7 +51,7 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		jsonBytes, _ := json.Marshal(body)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/submit", bytes.NewBuffer(jsonBytes))
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/background/submit", bytes.NewBuffer(jsonBytes))
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(w, req)
 
@@ -60,14 +60,14 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /api/v1/workerpool/submit-result", func(t *testing.T) {
+	t.Run("POST /api/v1/background/submit-result", func(t *testing.T) {
 		body := map[string]any{
 			"number": 9,
 		}
 		jsonBytes, _ := json.Marshal(body)
 
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/submit-result", bytes.NewBuffer(jsonBytes))
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/background/submit-result", bytes.NewBuffer(jsonBytes))
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(w, req)
 
@@ -83,9 +83,9 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /api/v1/workerpool/panic-demo (safe-wrapper)", func(t *testing.T) {
+	t.Run("POST /api/v1/background/panic-demo (safe-wrapper)", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo?type=safe-wrapper", nil)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/background/panic-demo?type=safe-wrapper", nil)
 		engine.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -95,9 +95,9 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	})
 
-	t.Run("POST /api/v1/workerpool/panic-demo (result-panic)", func(t *testing.T) {
+	t.Run("POST /api/v1/background/panic-demo (result-panic)", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo?type=result-panic", nil)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/background/panic-demo?type=result-panic", nil)
 		engine.ServeHTTP(w, req)
 
 		if w.Code != http.StatusInternalServerError {
@@ -105,9 +105,9 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /api/v1/workerpool/panic-demo (standard)", func(t *testing.T) {
+	t.Run("POST /api/v1/background/panic-demo (standard)", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo?type=standard", nil)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/background/panic-demo?type=standard", nil)
 		engine.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -117,9 +117,9 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	})
 
-	t.Run("GET /api/v1/workerpool/stats", func(t *testing.T) {
+	t.Run("GET /api/v1/background/stats", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/api/v1/workerpool/stats", nil)
+		req, _ := http.NewRequest(http.MethodGet, "/api/v1/background/stats", nil)
 		engine.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {

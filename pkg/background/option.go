@@ -1,4 +1,4 @@
-package workerpool
+package background
 
 import (
 	"runtime"
@@ -33,7 +33,7 @@ func (c config) validate() error {
 	return nil
 }
 
-// Option is a functional option for configuring a Pool.
+// Option is a functional option for configuring a Runner.
 type Option func(*config)
 
 // WithWorkers sets the number of concurrent worker goroutines.

@@ -1,4 +1,4 @@
-package workerpool
+package background
 
 import (
 	"context"
@@ -11,10 +11,10 @@ type Result[T any] struct {
 	Err   error
 }
 
-// SubmitWithResult submits a function returning (T, error) to the worker pool for execution.
+// SubmitWithResult submits a function returning (T, error) to the background runner for execution.
 // It returns a buffered channel of capacity 1 that delivers the Result[T] upon completion.
 func SubmitWithResult[T any](
-	pool *Pool,
+	runner *Runner,
 	ctx context.Context,
 	taskFunc func(ctx context.Context) (T, error),
 ) (<-chan Result[T], error) {
@@ -31,7 +31,7 @@ func SubmitWithResult[T any](
 					Err: fmt.Errorf("task panicked: %v", panicVal),
 				}
 				close(resultChan)
-				// Re-panic so Pool records the failure metrics and invokes its panic handler.
+				// Re-panic so Runner records the failure metrics and invokes its panic handler.
 				panic(panicVal)
 			}
 		}()
@@ -45,7 +45,7 @@ func SubmitWithResult[T any](
 		return err
 	}
 
-	if err := pool.Submit(ctx, wrappedTask); err != nil {
+	if err := runner.Submit(ctx, wrappedTask); err != nil {
 		return nil, err
 	}
 

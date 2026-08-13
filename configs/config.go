@@ -13,7 +13,7 @@ type Config struct {
 	HTTP       HTTPConfig       `mapstructure:",squash"`
 	Logger     LoggerConfig     `mapstructure:",squash"`
 	MySQL      MySQLConfig      `mapstructure:",squash"`
-	WorkerPool WorkerPoolConfig `mapstructure:",squash"`
+	Background BackgroundConfig `mapstructure:",squash"`
 }
 
 // HTTPConfig holds HTTP server settings.
@@ -44,10 +44,10 @@ type MySQLConfig struct {
 	ConnMaxIdleTime int    `mapstructure:"MYSQL_CONN_MAX_IDLE_TIME"`
 }
 
-// WorkerPoolConfig holds worker pool settings.
-type WorkerPoolConfig struct {
-	Workers   int `mapstructure:"WORKER_POOL_WORKERS"`
-	QueueSize int `mapstructure:"WORKER_POOL_QUEUE_SIZE"`
+// BackgroundConfig holds background runner settings.
+type BackgroundConfig struct {
+	Workers   int `mapstructure:"BACKGROUND_WORKERS"`
+	QueueSize int `mapstructure:"BACKGROUND_QUEUE_SIZE"`
 }
 
 // --- Singleton loader ---

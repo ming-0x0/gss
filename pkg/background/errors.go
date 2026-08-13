@@ -1,14 +1,14 @@
-package workerpool
+package background
 
 import "errors"
 
-// Sentinel errors returned by Pool operations.
+// Sentinel errors returned by background runner operations.
 var (
-	// ErrPoolClosed occurs when attempting to submit a task to a pool that has been closed.
-	ErrPoolClosed = errors.New("worker pool is closed")
+	// ErrClosed occurs when attempting to submit a task to a runner that has been closed.
+	ErrClosed = errors.New("background runner is closed")
 
 	// ErrQueueFull occurs when attempting to submit a task via TrySubmit to a full queue.
-	ErrQueueFull = errors.New("worker pool queue is full")
+	ErrQueueFull = errors.New("background task queue is full")
 
 	// ErrInvalidWorkerCount occurs when setting worker count to zero or a negative number.
 	ErrInvalidWorkerCount = errors.New("worker count must be greater than zero")

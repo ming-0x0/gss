@@ -1,4 +1,4 @@
-package workerpool
+package background
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	"gss/internal/delivery/http/handler"
 	"gss/internal/infrastructure/logger"
-	"gss/pkg/workerpool"
+	"gss/pkg/background"
 
 	"github.com/gin-gonic/gin"
 	"github.com/oaswrap/spec/adapter/ginopenapi"
@@ -18,20 +18,20 @@ import (
 
 type Handler struct {
 	*handler.Handler
-	wp     *workerpool.Pool
+	bg     *background.Runner
 	logger *logger.Logger
 }
 
-func NewHandler(baseHandler *handler.Handler, wp *workerpool.Pool, logger *logger.Logger) *Handler {
+func NewHandler(baseHandler *handler.Handler, bg *background.Runner, logger *logger.Logger) *Handler {
 	return &Handler{
 		Handler: baseHandler,
-		wp:      wp,
+		bg:      bg,
 		logger:  logger,
 	}
 }
 
 func (h *Handler) RegisterRoutes(r ginopenapi.Router) {
-	group := r.Group("/api/v1/workerpool")
+	group := r.Group("/api/v1/background")
 	{
 		group.POST("/submit", h.SubmitTask)
 		group.POST("/try-submit", h.TrySubmitTask)
@@ -50,7 +50,7 @@ type SubmitWithResultRequest struct {
 	Number int `json:"number" binding:"required"`
 }
 
-// SubmitTask queues an async task to the worker pool.
+// SubmitTask queues an async task to the background runner.
 func (h *Handler) SubmitTask(c *gin.Context) {
 	var req SubmitTaskRequest
 	if !h.BindAndValidate(c, &req) {
@@ -58,7 +58,7 @@ func (h *Handler) SubmitTask(c *gin.Context) {
 	}
 
 	delay := time.Duration(req.DelayMs) * time.Millisecond
-	err := h.wp.Submit(c.Request.Context(), func(ctx context.Context) error {
+	err := h.bg.Submit(c.Request.Context(), func(ctx context.Context) error {
 		h.logger.Info("Starting async background task", "name", req.TaskName)
 		if delay > 0 {
 			time.Sleep(delay)
@@ -85,12 +85,12 @@ func (h *Handler) TrySubmitTask(c *gin.Context) {
 		return
 	}
 
-	err := h.wp.TrySubmit(c.Request.Context(), func(ctx context.Context) error {
+	err := h.bg.TrySubmit(c.Request.Context(), func(ctx context.Context) error {
 		time.Sleep(50 * time.Millisecond)
 		return nil
 	})
 
-	if errors.Is(err, workerpool.ErrQueueFull) {
+	if errors.Is(err, background.ErrQueueFull) {
 		c.JSON(http.StatusTooManyRequests, gin.H{
 			"error": "Task queue is full, please try again later",
 		})
@@ -113,7 +113,7 @@ func (h *Handler) SubmitWithResultTask(c *gin.Context) {
 		return
 	}
 
-	resCh, err := workerpool.SubmitWithResult(h.wp, c.Request.Context(), func(ctx context.Context) (int, error) {
+	resCh, err := background.SubmitWithResult(h.bg, c.Request.Context(), func(ctx context.Context) (int, error) {
 		// Demo computation: calculate square of input number
 		result := req.Number * req.Number
 		return result, nil
@@ -140,14 +140,14 @@ func (h *Handler) SubmitWithResultTask(c *gin.Context) {
 // Query parameter ?type=safe-wrapper|result-panic|standard (default: safe-wrapper)
 // 1. safe-wrapper: Uses SafeSubmit wrapper to catch panic, log stack trace with request context, and convert to error.
 // 2. result-panic: Catches panic inside SubmitWithResult task, logging details and returning typed error to caller channel.
-// 3. standard: Delegates panic handling directly to pool level recovery.
+// 3. standard: Delegates panic handling directly to runner level recovery.
 func (h *Handler) PanicDemoTask(c *gin.Context) {
 	panicType := c.DefaultQuery("type", "safe-wrapper")
 
 	switch panicType {
 	case "result-panic":
 		// Pattern 1: Catching panic inside SubmitWithResult & returning panic error back over result channel
-		resCh, err := workerpool.SubmitWithResult(h.wp, c.Request.Context(), func(ctx context.Context) (res int, err error) {
+		resCh, err := background.SubmitWithResult(h.bg, c.Request.Context(), func(ctx context.Context) (res int, err error) {
 			defer func() {
 				if r := recover(); r != nil {
 					h.logger.Error("Handler caught task panic inside SubmitWithResult",
@@ -193,8 +193,8 @@ func (h *Handler) PanicDemoTask(c *gin.Context) {
 		h.OK(c, gin.H{"message": "Task completed successfully"})
 
 	default:
-		// Pattern 3: Standard submission, relying on pool level panic handler
-		err := h.wp.Submit(c.Request.Context(), func(ctx context.Context) error {
+		// Pattern 3: Standard submission, relying on runner level panic handler
+		err := h.bg.Submit(c.Request.Context(), func(ctx context.Context) error {
 			panic("Standard worker panic demo string")
 		})
 		if err != nil {
@@ -202,13 +202,13 @@ func (h *Handler) PanicDemoTask(c *gin.Context) {
 			return
 		}
 		h.OK(c, gin.H{
-			"message": "Panic task queued; recovered by worker pool panic handler",
+			"message": "Panic task queued; recovered by background panic handler",
 		})
 	}
 }
 
-// SafeSubmit wraps a worker pool task with handler-level panic recovery, stack trace capture, and error mapping.
-func (h *Handler) SafeSubmit(ctx context.Context, taskName string, task workerpool.Task) error {
+// SafeSubmit wraps a background task with handler-level panic recovery, stack trace capture, and error mapping.
+func (h *Handler) SafeSubmit(ctx context.Context, taskName string, task background.Task) error {
 	safeTask := func(taskCtx context.Context) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -223,14 +223,14 @@ func (h *Handler) SafeSubmit(ctx context.Context, taskName string, task workerpo
 		}()
 		return task(taskCtx)
 	}
-	return h.wp.Submit(ctx, safeTask)
+	return h.bg.Submit(ctx, safeTask)
 }
 
-// GetStats returns current metrics for the worker pool.
+// GetStats returns current metrics for the background runner.
 func (h *Handler) GetStats(c *gin.Context) {
-	stats := h.wp.Stats()
+	stats := h.bg.Stats()
 	h.OK(c, gin.H{
-		"workers":        h.wp.Size(),
+		"workers":        h.bg.Size(),
 		"active_workers": stats.Active,
 		"queue_len":      stats.QueueLen,
 		"submitted":      stats.Submitted,

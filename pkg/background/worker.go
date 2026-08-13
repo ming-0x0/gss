@@ -1,4 +1,4 @@
-package workerpool
+package background
 
 import (
 	"context"
@@ -6,27 +6,27 @@ import (
 )
 
 // run is the main loop for each worker goroutine.
-// It continuously pulls envelopes from the queue until the pool context
+// It continuously pulls envelopes from the queue until the runner context
 // is cancelled (Stop) or the queue channel is closed (Shutdown drain complete).
-func (p *Pool) run() {
-	defer p.wg.Done()
+func (r *Runner) run() {
+	defer r.wg.Done()
 
 	for {
 		select {
-		case <-p.ctx.Done():
-			// Pool was force-stopped via Stop() → exit immediately.
+		case <-r.ctx.Done():
+			// Runner was force-stopped via Stop() → exit immediately.
 			return
-		case env, ok := <-p.queue:
+		case env, ok := <-r.queue:
 			if !ok {
 				// Queue channel closed after graceful Shutdown drain → no more work.
 				return
 			}
-			// Guard against a race: Stop() may have cancelled p.ctx between
+			// Guard against a race: Stop() may have cancelled r.ctx between
 			// the channel receive and here. Avoid starting stale work.
-			if p.ctx.Err() != nil {
+			if r.ctx.Err() != nil {
 				return
 			}
-			p.exec(env)
+			r.exec(env)
 		}
 	}
 }
@@ -36,58 +36,58 @@ func (p *Pool) run() {
 // Lifecycle of a task execution:
 //  1. Increment active counter
 //  2. Set up panic recovery (deferred)
-//  3. Build task context (pool ctx + optional timeout + caller cancellation)
+//  3. Build task context (runner ctx + optional timeout + caller cancellation)
 //  4. Invoke task function
 //  5. Record success/failure in metrics
-func (p *Pool) exec(env envelope) {
-	p.metrics.active.Add(1)
-	defer p.metrics.active.Add(-1)
+func (r *Runner) exec(env envelope) {
+	r.metrics.active.Add(1)
+	defer r.metrics.active.Add(-1)
 
 	// Panic recovery must be deferred before task invocation so it catches
 	// panics from both the task and context setup.
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			p.metrics.failed.Add(1)
-			p.metrics.panicked.Add(1)
-			p.handlePanic(recovered)
+			r.metrics.failed.Add(1)
+			r.metrics.panicked.Add(1)
+			r.handlePanic(recovered)
 		}
 	}()
 
-	taskCtx, taskCancel := p.deriveTaskCtx(env.ctx)
+	taskCtx, taskCancel := r.deriveTaskCtx(env.ctx)
 	if taskCancel != nil {
 		defer taskCancel()
 	}
 
 	if err := env.task(taskCtx); err != nil {
-		p.metrics.failed.Add(1)
+		r.metrics.failed.Add(1)
 	} else {
-		p.metrics.completed.Add(1)
+		r.metrics.completed.Add(1)
 	}
 }
 
 // handlePanic invokes the user-defined panic handler, or falls back to printing.
 // It also guards against panics inside the custom handler itself to prevent
 // crashing the worker goroutine.
-func (p *Pool) handlePanic(recovered any) {
-	if p.panicFn == nil {
-		fmt.Printf("[workerpool] worker recovered from panic: %v\n", recovered)
+func (r *Runner) handlePanic(recovered any) {
+	if r.panicFn == nil {
+		fmt.Printf("[background] worker recovered from panic: %v\n", recovered)
 		return
 	}
 
 	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("[workerpool] panic handler panicked: %v\n", r)
+		if panicErr := recover(); panicErr != nil {
+			fmt.Printf("[background] panic handler panicked: %v\n", panicErr)
 		}
 	}()
 
-	p.panicFn(recovered)
+	r.panicFn(recovered)
 }
 
 // deriveTaskCtx constructs the execution context for a single task by merging
 // three cancellation signals:
 //
 //	┌─────────────┐
-//	│   p.ctx     │ ← pool lifecycle (cancelled on Stop)
+//	│   r.ctx     │ ← runner lifecycle (cancelled on Stop)
 //	│  (parent)   │
 //	└──────┬──────┘
 //	       │
@@ -100,10 +100,10 @@ func (p *Pool) handlePanic(recovered any) {
 //	       ◄────────── callerCtx (e.g. HTTP request context)
 //
 // The resulting taskCtx is cancelled when ANY of these fires:
-//   - Pool is stopped (p.ctx cancelled)
+//   - Runner is stopped (r.ctx cancelled)
 //   - Task timeout expires (if configured)
 //   - Caller's context is cancelled (e.g. client disconnects)
-func (p *Pool) deriveTaskCtx(callerCtx context.Context) (context.Context, context.CancelFunc) {
+func (r *Runner) deriveTaskCtx(callerCtx context.Context) (context.Context, context.CancelFunc) {
 	if callerCtx == nil {
 		callerCtx = context.Background()
 	}
@@ -114,11 +114,11 @@ func (p *Pool) deriveTaskCtx(callerCtx context.Context) (context.Context, contex
 		taskCtx    context.Context
 		taskCancel context.CancelFunc
 	)
-	if p.taskTimeout > 0 {
-		// WithTimeout already creates a cancellable child of p.ctx.
-		taskCtx, taskCancel = context.WithTimeout(p.ctx, p.taskTimeout)
+	if r.taskTimeout > 0 {
+		// WithTimeout already creates a cancellable child of r.ctx.
+		taskCtx, taskCancel = context.WithTimeout(r.ctx, r.taskTimeout)
 	} else {
-		taskCtx, taskCancel = context.WithCancel(p.ctx)
+		taskCtx, taskCancel = context.WithCancel(r.ctx)
 	}
 
 	// If the caller's context is cancellable (e.g. HTTP request with deadline),
@@ -135,4 +135,3 @@ func (p *Pool) deriveTaskCtx(callerCtx context.Context) (context.Context, contex
 
 	return taskCtx, taskCancel
 }
-

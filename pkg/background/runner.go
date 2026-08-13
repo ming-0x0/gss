@@ -1,4 +1,4 @@
-package workerpool
+package background
 
 import (
 	"context"
@@ -19,8 +19,8 @@ type envelope struct {
 	task Task
 }
 
-// Pool manages a fixed set of worker goroutines executing tasks concurrently.
-type Pool struct {
+// Runner manages a fixed set of worker goroutines executing background tasks concurrently.
+type Runner struct {
 	// Configuration
 	workers     int
 	queueSize   int
@@ -45,8 +45,8 @@ type Pool struct {
 	metrics metrics
 }
 
-// New creates, initializes, and starts a new worker pool with the provided options.
-func New(opts ...Option) (*Pool, error) {
+// New creates, initializes, and starts a new background runner with the provided options.
+func New(opts ...Option) (*Runner, error) {
 	cfg := defaultConfig()
 	for _, o := range opts {
 		o(&cfg)
@@ -57,7 +57,7 @@ func New(opts ...Option) (*Pool, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	p := &Pool{
+	r := &Runner{
 		workers:     cfg.workers,
 		queueSize:   cfg.queueSize,
 		taskTimeout: cfg.taskTimeout,
@@ -69,88 +69,88 @@ func New(opts ...Option) (*Pool, error) {
 		done:        make(chan struct{}),
 	}
 
-	p.startWorkers()
+	r.startWorkers()
 
 	go func() {
-		p.wg.Wait()
-		close(p.done)
+		r.wg.Wait()
+		close(r.done)
 	}()
 
-	return p, nil
+	return r, nil
 }
 
 // startWorkers launches the worker goroutines.
-func (p *Pool) startWorkers() {
-	for i := 0; i < p.workers; i++ {
-		p.wg.Add(1)
-		go p.run()
+func (r *Runner) startWorkers() {
+	for i := 0; i < r.workers; i++ {
+		r.wg.Add(1)
+		go r.run()
 	}
 }
 
-// Shutdown gracefully stops the pool. It rejects new submissions, waits for
+// Shutdown gracefully stops the background runner. It rejects new submissions, waits for
 // queued tasks to finish, or returns early if ctx is cancelled.
-func (p *Pool) Shutdown(ctx context.Context) error {
+func (r *Runner) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	if !p.sealSubmissions() {
-		return ErrPoolClosed
+	if !r.sealSubmissions() {
+		return ErrClosed
 	}
 
-	p.drainAndClose()
+	r.drainAndClose()
 
 	select {
-	case <-p.done:
+	case <-r.done:
 		return nil
 	case <-ctx.Done():
 		// Graceful timeout → force-cancel active tasks.
-		p.cancel()
+		r.cancel()
 		return ctx.Err()
 	}
 }
 
 // Stop immediately cancels all active tasks and stops workers.
-func (p *Pool) Stop() {
-	p.sealSubmissions()
-	p.cancel()
-	p.drainAndClose()
-	<-p.done
+func (r *Runner) Stop() {
+	r.sealSubmissions()
+	r.cancel()
+	r.drainAndClose()
+	<-r.done
 }
 
 // sealSubmissions prevents new submissions and signals blocked senders.
-func (p *Pool) sealSubmissions() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func (r *Runner) sealSubmissions() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 
-	if !p.closed.CompareAndSwap(false, true) {
+	if !r.closed.CompareAndSwap(false, true) {
 		return false
 	}
-	close(p.draining)
+	close(r.draining)
 	return true
 }
 
 // drainAndClose waits for in-flight senders to finish, then closes the queue channel.
-func (p *Pool) drainAndClose() {
-	p.inflight.Wait()
-	p.closeQueue.Do(func() {
-		close(p.queue)
+func (r *Runner) drainAndClose() {
+	r.inflight.Wait()
+	r.closeQueue.Do(func() {
+		close(r.queue)
 	})
 }
 
 // Size returns the configured number of worker goroutines.
-func (p *Pool) Size() int {
-	return p.workers
+func (r *Runner) Size() int {
+	return r.workers
 }
 
-// Stats returns a point-in-time snapshot of pool metrics.
-func (p *Pool) Stats() Snapshot {
+// Stats returns a point-in-time snapshot of runner metrics.
+func (r *Runner) Stats() Snapshot {
 	return Snapshot{
-		Active:    p.metrics.active.Load(),
-		QueueLen:  len(p.queue),
-		Submitted: p.metrics.submitted.Load(),
-		Completed: p.metrics.completed.Load(),
-		Failed:    p.metrics.failed.Load(),
-		Panicked:  p.metrics.panicked.Load(),
+		Active:    r.metrics.active.Load(),
+		QueueLen:  len(r.queue),
+		Submitted: r.metrics.submitted.Load(),
+		Completed: r.metrics.completed.Load(),
+		Failed:    r.metrics.failed.Load(),
+		Panicked:  r.metrics.panicked.Load(),
 	}
 }

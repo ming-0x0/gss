@@ -7,13 +7,13 @@ import (
 	deliveryHTTP "gss/internal/delivery/http"
 	"gss/internal/delivery/http/handler"
 	"gss/internal/delivery/http/handler/auth"
+	backgroundHandler "gss/internal/delivery/http/handler/background"
 	"gss/internal/delivery/http/handler/health"
-	workerpoolHandler "gss/internal/delivery/http/handler/workerpool"
 	"gss/internal/infrastructure/logger"
 	"gss/internal/infrastructure/orm"
 	"gss/internal/repository"
+	"gss/pkg/background"
 	"gss/pkg/mysql"
-	"gss/pkg/workerpool"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,7 +26,7 @@ import (
 type App struct {
 	cfg    *configs.Config
 	db     *sql.DB
-	wp     *workerpool.Pool
+	bg     *background.Runner
 	srv    *http.Server
 	logger *logger.Logger
 	wg     sync.WaitGroup
@@ -59,30 +59,26 @@ func New(
 		orm.WithLevel(cfg.Logger.Level),
 	))
 
-	// Initialize Worker Pool
-	workers := cfg.WorkerPool.Workers
+	// Initialize Background Runner Pool
+	workers := cfg.Background.Workers
 	if workers <= 0 {
 		workers = runtime.NumCPU() * 2
 	}
-	queueSize := cfg.WorkerPool.QueueSize
+	queueSize := cfg.Background.QueueSize
 	if queueSize <= 0 {
 		queueSize = 500
 	}
 
-	logger.Info("Initializing worker pool...", "workers", workers, "queueSize", queueSize)
-	wp, err := workerpool.New(
-		workerpool.WithWorkers(workers),
-		workerpool.WithQueueSize(queueSize),
+	logger.Info("Initializing background pool...", "workers", workers, "queueSize", queueSize)
+	bg, err := background.New(
+		background.WithWorkers(workers),
+		background.WithQueueSize(queueSize),
 		// Register custom panic handler using WithPanicHandler
-		workerpool.WithPanicHandler(func(r any) {
-			logger.Error("⚡ [WithPanicHandler] Worker pool recovered from panic!",
+		background.WithPanicHandler(func(r any) {
+			logger.Error("⚡ [WithPanicHandler] Background pool recovered from panic!",
 				"panic_value", r,
 				"timestamp", time.Now().Format(time.RFC3339),
 			)
-			// Ở đây bạn có thể thêm logic tùy chỉnh như:
-			// 1. Gửi thông báo khẩn cấp tới Slack / Telegram Webhook
-			// 2. Đẩy chỉ số panic lên Prometheus / Grafana
-			// 3. Ghi vết incident vào DB / Dead Letter Queue (DLQ)
 		}),
 	)
 	if err != nil {
@@ -96,7 +92,7 @@ func New(
 	handlers := []deliveryHTTP.Handler{
 		auth.NewHandler(baseHandler, repositoryContainer.UserRepository, logger),
 		health.NewHandler(),
-		workerpoolHandler.NewHandler(baseHandler, wp, logger),
+		backgroundHandler.NewHandler(baseHandler, bg, logger),
 	}
 
 	requestTimeout := cfg.HTTP.RequestTimeout
@@ -122,7 +118,7 @@ func New(
 	return &App{
 		cfg:    cfg,
 		db:     mysqlDB,
-		wp:     wp,
+		bg:     bg,
 		logger: logger,
 		srv: &http.Server{
 			Addr:         addr,
@@ -134,8 +130,8 @@ func New(
 	}, nil
 }
 
-func (a *App) WorkerPool() *workerpool.Pool {
-	return a.wp
+func (a *App) Background() *background.Runner {
+	return a.bg
 }
 
 func (a *App) Run() error {
@@ -180,10 +176,10 @@ func (a *App) stop(
 			a.logger.Error("Error during graceful HTTP server shutdown", "err", err)
 		}
 
-		if a.wp != nil {
-			a.logger.Info("Shutting down worker pool...")
-			if err := a.wp.Shutdown(ctx); err != nil {
-				a.logger.Error("Error shutting down worker pool", "err", err)
+		if a.bg != nil {
+			a.logger.Info("Shutting down background pool...")
+			if err := a.bg.Shutdown(ctx); err != nil {
+				a.logger.Error("Error shutting down background pool", "err", err)
 			}
 		}
 
