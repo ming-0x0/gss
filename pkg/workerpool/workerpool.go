@@ -207,15 +207,16 @@ func (p *Pool) reportPanic(r any) {
 }
 
 // taskContext is cancelled when either the submitting context is cancelled or
-// Stop is called. context.AfterFunc avoids an extra goroutine per task.
+// Stop is called. The pool context is the direct parent so Stop propagates
+// cancellation through the context tree without scheduling a callback.
 func (p *Pool) taskContext(parent context.Context) (context.Context, context.CancelFunc) {
 	if parent == nil {
 		parent = context.Background()
 	}
-	taskCtx, cancel := context.WithCancel(parent)
-	stopCancel := context.AfterFunc(p.ctx, cancel)
+	taskCtx, cancel := context.WithCancel(p.ctx)
+	stopParentCancel := context.AfterFunc(parent, cancel)
 	return taskCtx, func() {
-		stopCancel()
+		stopParentCancel()
 		cancel()
 	}
 }
@@ -256,6 +257,9 @@ func (p *Pool) Submit(ctx context.Context, task Task) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := p.beginSubmit(); err != nil {
 		return err
 	}
@@ -283,6 +287,9 @@ func (p *Pool) TrySubmit(ctx context.Context, task Task) error {
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if err := p.beginSubmit(); err != nil {
 		return err
@@ -327,7 +334,8 @@ func (p *Pool) Shutdown(ctx context.Context) error {
 	}
 }
 
-// Stop immediately stops all workers, canceling active task contexts.
+// Stop stops workers and cancels active task contexts. Tasks must honor their
+// context cancellation for Stop to return promptly.
 func (p *Pool) Stop() {
 	p.closeSubmissions()
 	p.cancel()

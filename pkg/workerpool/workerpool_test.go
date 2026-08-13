@@ -251,6 +251,27 @@ func TestSubmitNilTask(t *testing.T) {
 	}
 }
 
+func TestSubmitRejectsAlreadyCanceledContext(t *testing.T) {
+	p, err := workerpool.New(workerpool.WithWorkers(1), workerpool.WithQueueSize(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := p.Submit(ctx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Submit error = %v, want context.Canceled", err)
+	}
+	if err := p.TrySubmit(ctx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("TrySubmit error = %v, want context.Canceled", err)
+	}
+	if p.Submitted() != 0 {
+		t.Fatalf("Submitted = %d, want 0", p.Submitted())
+	}
+}
+
 func TestSubmitClosedPool(t *testing.T) {
 	p, err := workerpool.New()
 	if err != nil {
@@ -292,6 +313,38 @@ func TestWithTaskTimeout(t *testing.T) {
 	err = <-errCh
 	if err != context.DeadlineExceeded {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
+	}
+}
+
+func TestSubmittingContextCancelsRunningTask(t *testing.T) {
+	p, err := workerpool.New(workerpool.WithWorkers(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{})
+	finished := make(chan error, 1)
+	if err := p.Submit(ctx, func(taskCtx context.Context) error {
+		close(started)
+		<-taskCtx.Done()
+		finished <- taskCtx.Err()
+		return taskCtx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	cancel()
+
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("task context error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("submitting context did not cancel running task")
 	}
 }
 
