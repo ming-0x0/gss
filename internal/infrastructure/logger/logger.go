@@ -8,8 +8,6 @@ import (
 	"os"
 	"runtime"
 	"time"
-
-	"gss/internal/infrastructure/logger/handler"
 )
 
 type Level string
@@ -136,7 +134,7 @@ func New(opts ...Option) *Logger {
 	}
 
 	return &Logger{
-		Logger: slog.New(handler.NewJSONHandler(cfg.writer, handlerOptions)),
+		Logger: slog.New(newJSONHandler(cfg.writer, handlerOptions)),
 	}
 }
 

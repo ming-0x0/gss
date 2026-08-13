@@ -87,13 +87,13 @@ func (p *Pool) handlePanic(recovered any) {
 // three cancellation signals:
 //
 //	┌─────────────┐
-//	│   p.ctx      │ ← pool lifecycle (cancelled on Stop)
-//	│  (parent)    │
+//	│   p.ctx     │ ← pool lifecycle (cancelled on Stop)
+//	│  (parent)   │
 //	└──────┬──────┘
 //	       │
 //	       ▼
 //	┌─────────────┐
-//	│  taskCtx     │ ← WithCancel or WithTimeout (if taskTimeout > 0)
+//	│  taskCtx    │ ← WithCancel or WithTimeout (if taskTimeout > 0)
 //	└──────┬──────┘
 //	       │
 //	       │  AfterFunc

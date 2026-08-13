@@ -12,7 +12,7 @@ import (
 	"gss/internal/infrastructure/logger"
 	"gss/internal/infrastructure/orm"
 	"gss/internal/repository"
-	"gss/pkg/database/mysql"
+	"gss/pkg/mysql"
 	"gss/pkg/workerpool"
 	"net/http"
 	"os"

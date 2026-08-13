@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	ctxkey "gss/pkg/ctxutil/key"
+	"gss/pkg/ctxkey"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/mysqldialect"

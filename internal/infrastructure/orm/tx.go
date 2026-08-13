@@ -3,7 +3,7 @@ package orm
 import (
 	"context"
 
-	ctxkey "gss/pkg/ctxutil/key"
+	"gss/pkg/ctxkey"
 
 	"github.com/uptrace/bun"
 )
