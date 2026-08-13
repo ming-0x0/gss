@@ -5,47 +5,49 @@ import (
 	"fmt"
 )
 
-// Result holds the output or error from a generic task execution.
+// Result holds the return value or error from executing a generic task function.
 type Result[T any] struct {
 	Value T
 	Err   error
 }
 
-// SubmitWithResult submits a function that returns (T, error) to the worker pool.
-// It returns a buffered channel of capacity 1 which receives a Result[T] upon completion.
+// SubmitWithResult submits a function returning (T, error) to the worker pool for execution.
+// It returns a buffered channel of capacity 1 that delivers the Result[T] upon completion.
 func SubmitWithResult[T any](
-	p *Pool,
+	pool *Pool,
 	ctx context.Context,
-	fn func(ctx context.Context) (T, error),
+	taskFunc func(ctx context.Context) (T, error),
 ) (<-chan Result[T], error) {
-	if fn == nil {
+	if taskFunc == nil {
 		return nil, ErrNilTask
 	}
 
-	resultCh := make(chan Result[T], 1)
+	resultChan := make(chan Result[T], 1)
 
-	task := func(taskCtx context.Context) error {
+	wrappedTask := func(taskCtx context.Context) error {
 		defer func() {
-			if r := recover(); r != nil {
-				resultCh <- Result[T]{Err: fmt.Errorf("task panicked: %v", r)}
-				close(resultCh)
-				// Re-panic so Pool records the failure and invokes its handler.
-				panic(r)
+			if panicVal := recover(); panicVal != nil {
+				resultChan <- Result[T]{
+					Err: fmt.Errorf("task panicked: %v", panicVal),
+				}
+				close(resultChan)
+				// Re-panic so Pool records the failure metrics and invokes its panic handler.
+				panic(panicVal)
 			}
 		}()
 
-		val, err := fn(taskCtx)
-		resultCh <- Result[T]{
-			Value: val,
+		resultVal, err := taskFunc(taskCtx)
+		resultChan <- Result[T]{
+			Value: resultVal,
 			Err:   err,
 		}
-		close(resultCh)
+		close(resultChan)
 		return err
 	}
 
-	if err := p.Submit(ctx, task); err != nil {
+	if err := pool.Submit(ctx, wrappedTask); err != nil {
 		return nil, err
 	}
 
-	return resultCh, nil
+	return resultChan, nil
 }
