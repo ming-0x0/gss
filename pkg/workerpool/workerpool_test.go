@@ -20,8 +20,8 @@ func TestNewPool(t *testing.T) {
 		}
 		defer pool.Stop()
 
-		if pool.Workers() <= 0 {
-			t.Errorf("expected worker count > 0, got %d", pool.Workers())
+		if pool.Size() <= 0 {
+			t.Errorf("expected worker count > 0, got %d", pool.Size())
 		}
 	})
 
@@ -35,8 +35,8 @@ func TestNewPool(t *testing.T) {
 		}
 		defer pool.Stop()
 
-		if pool.Workers() != 4 {
-			t.Errorf("expected 4 workers, got %d", pool.Workers())
+		if pool.Size() != 4 {
+			t.Errorf("expected 4 workers, got %d", pool.Size())
 		}
 	})
 
@@ -95,8 +95,9 @@ func TestSubmitAndExecute(t *testing.T) {
 		t.Errorf("expected %d completed tasks, got %d", taskCount, completedCounter.Load())
 	}
 
-	if pool.Completed() != taskCount {
-		t.Errorf("expected stats completed %d, got %d", taskCount, pool.Completed())
+	stats := pool.Stats()
+	if stats.Completed != taskCount {
+		t.Errorf("expected stats completed %d, got %d", taskCount, stats.Completed)
 	}
 }
 
@@ -196,8 +197,8 @@ func TestPanicRecovery(t *testing.T) {
 		t.Error("expected normal task to execute after panic recovery")
 	}
 
-	if pool.Failed() != 1 {
-		t.Errorf("expected 1 failed task from panic, got %d", pool.Failed())
+	if pool.Stats().Failed != 1 {
+		t.Errorf("expected 1 failed task from panic, got %d", pool.Stats().Failed)
 	}
 }
 
@@ -266,8 +267,8 @@ func TestSubmitRejectsAlreadyCanceledContext(t *testing.T) {
 	if err := pool.TrySubmit(cancelCtx, func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("TrySubmit error = %v, want context.Canceled", err)
 	}
-	if pool.Submitted() != 0 {
-		t.Fatalf("Submitted = %d, want 0", pool.Submitted())
+	if pool.Stats().Submitted != 0 {
+		t.Fatalf("Submitted = %d, want 0", pool.Stats().Submitted)
 	}
 }
 

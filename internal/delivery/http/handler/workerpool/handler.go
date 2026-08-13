@@ -228,12 +228,13 @@ func (h *Handler) SafeSubmit(ctx context.Context, taskName string, task workerpo
 
 // GetStats returns current metrics for the worker pool.
 func (h *Handler) GetStats(c *gin.Context) {
+	stats := h.wp.Stats()
 	h.OK(c, gin.H{
-		"workers":        h.wp.Workers(),
-		"active_workers": h.wp.ActiveWorkers(),
-		"queue_len":      h.wp.QueueLen(),
-		"submitted":      h.wp.Submitted(),
-		"completed":      h.wp.Completed(),
-		"failed":         h.wp.Failed(),
+		"workers":        h.wp.Size(),
+		"active_workers": stats.Active,
+		"queue_len":      stats.QueueLen,
+		"submitted":      stats.Submitted,
+		"completed":      stats.Completed,
+		"failed":         stats.Failed,
 	})
 }
