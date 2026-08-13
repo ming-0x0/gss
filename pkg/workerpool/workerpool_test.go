@@ -46,6 +46,20 @@ func TestNewPool(t *testing.T) {
 			t.Errorf("expected ErrInvalidWorkerCount, got %v", err)
 		}
 	})
+
+	t.Run("invalid queue size", func(t *testing.T) {
+		_, err := workerpool.New(workerpool.WithQueueSize(-1))
+		if err != workerpool.ErrInvalidQueueSize {
+			t.Errorf("expected ErrInvalidQueueSize, got %v", err)
+		}
+	})
+
+	t.Run("invalid task timeout", func(t *testing.T) {
+		_, err := workerpool.New(workerpool.WithTaskTimeout(-time.Second))
+		if err != workerpool.ErrInvalidTaskTimeout {
+			t.Errorf("expected ErrInvalidTaskTimeout, got %v", err)
+		}
+	})
 }
 
 func TestSubmitAndExecute(t *testing.T) {
@@ -278,6 +292,106 @@ func TestWithTaskTimeout(t *testing.T) {
 	err = <-errCh
 	if err != context.DeadlineExceeded {
 		t.Errorf("expected context.DeadlineExceeded, got %v", err)
+	}
+}
+
+func TestStopCancelsTaskAndSkipsQueuedWork(t *testing.T) {
+	p, err := workerpool.New(workerpool.WithWorkers(1), workerpool.WithQueueSize(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	var queuedRan atomic.Bool
+	if err := p.Submit(nil, func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		close(cancelled)
+		return ctx.Err()
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := p.Submit(context.Background(), func(context.Context) error {
+		queuedRan.Store(true)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	p.Stop()
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("Stop did not cancel the active task")
+	}
+	if queuedRan.Load() {
+		t.Fatal("Stop executed queued work")
+	}
+}
+
+func TestShutdownUnblocksConcurrentSubmit(t *testing.T) {
+	p, err := workerpool.New(workerpool.WithWorkers(1), workerpool.WithQueueSize(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block := make(chan struct{})
+	started := make(chan struct{})
+	if err := p.Submit(context.Background(), func(context.Context) error {
+		close(started)
+		<-block
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+
+	submitDone := make(chan error, 1)
+	go func() {
+		submitDone <- p.Submit(context.Background(), func(context.Context) error { return nil })
+	}()
+
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- p.Shutdown(context.Background()) }()
+
+	select {
+	case err := <-submitDone:
+		if err != workerpool.ErrPoolClosed {
+			t.Fatalf("Submit error = %v, want %v", err, workerpool.ErrPoolClosed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Shutdown did not release blocked Submit")
+	}
+
+	close(block)
+	select {
+	case err := <-shutdownDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Shutdown did not finish")
+	}
+}
+
+func TestSubmitWithResultPanicReturnsResult(t *testing.T) {
+	p, err := workerpool.New(workerpool.WithWorkers(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Stop()
+
+	results, err := workerpool.SubmitWithResult(p, context.Background(), func(context.Context) (int, error) {
+		panic("boom")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := <-results
+	if result.Err == nil || result.Err.Error() != "task panicked: boom" {
+		t.Fatalf("unexpected result error: %v", result.Err)
 	}
 }
 

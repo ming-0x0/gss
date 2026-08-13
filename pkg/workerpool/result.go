@@ -2,6 +2,7 @@ package workerpool
 
 import (
 	"context"
+	"fmt"
 )
 
 // Result holds the output or error from a generic task execution.
@@ -24,6 +25,15 @@ func SubmitWithResult[T any](
 	resultCh := make(chan Result[T], 1)
 
 	task := func(taskCtx context.Context) error {
+		defer func() {
+			if r := recover(); r != nil {
+				resultCh <- Result[T]{Err: fmt.Errorf("task panicked: %v", r)}
+				close(resultCh)
+				// Re-panic so Pool records the failure and invokes its handler.
+				panic(r)
+			}
+		}()
+
 		val, err := fn(taskCtx)
 		resultCh <- Result[T]{
 			Value: val,
