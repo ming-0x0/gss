@@ -214,6 +214,9 @@ func (p *Pool) taskContext(parent context.Context) (context.Context, context.Can
 		parent = context.Background()
 	}
 	taskCtx, cancel := context.WithCancel(p.ctx)
+	if parent.Done() == nil {
+		return taskCtx, cancel
+	}
 	stopParentCancel := context.AfterFunc(parent, cancel)
 	return taskCtx, func() {
 		stopParentCancel()

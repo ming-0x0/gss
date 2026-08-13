@@ -429,6 +429,34 @@ func TestShutdownUnblocksConcurrentSubmit(t *testing.T) {
 	}
 }
 
+func TestConcurrentSubmitAndStop(t *testing.T) {
+	for range 25 {
+		p, err := workerpool.New(workerpool.WithWorkers(2), workerpool.WithQueueSize(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		start := make(chan struct{})
+		var submitters sync.WaitGroup
+		for range 16 {
+			submitters.Add(1)
+			go func() {
+				defer submitters.Done()
+				<-start
+				_ = p.Submit(context.Background(), func(context.Context) error { return nil })
+			}()
+		}
+
+		close(start)
+		p.Stop()
+		submitters.Wait()
+
+		if err := p.Submit(context.Background(), func(context.Context) error { return nil }); err != workerpool.ErrPoolClosed {
+			t.Fatalf("Submit after Stop error = %v, want %v", err, workerpool.ErrPoolClosed)
+		}
+	}
+}
+
 func TestSubmitWithResultPanicReturnsResult(t *testing.T) {
 	p, err := workerpool.New(workerpool.WithWorkers(1))
 	if err != nil {
