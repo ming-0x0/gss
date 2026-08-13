@@ -3,7 +3,9 @@ package workerpool
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"gss/internal/delivery/http/handler"
@@ -134,20 +136,94 @@ func (h *Handler) SubmitWithResultTask(c *gin.Context) {
 	})
 }
 
-// PanicDemoTask submits a task that panics to showcase worker panic recovery.
+// PanicDemoTask demonstrates different panic recovery strategies directly within the HTTP handler:
+// Query parameter ?type=safe-wrapper|result-panic|standard (default: safe-wrapper)
+// 1. safe-wrapper: Uses SafeSubmit wrapper to catch panic, log stack trace with request context, and convert to error.
+// 2. result-panic: Catches panic inside SubmitWithResult task, logging details and returning typed error to caller channel.
+// 3. standard: Delegates panic handling directly to pool level recovery.
 func (h *Handler) PanicDemoTask(c *gin.Context) {
-	err := h.wp.Submit(c.Request.Context(), func(ctx context.Context) error {
-		panic("Simulated worker panic demo")
-	})
+	panicType := c.DefaultQuery("type", "safe-wrapper")
 
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+	switch panicType {
+	case "result-panic":
+		// Pattern 1: Catching panic inside SubmitWithResult & returning panic error back over result channel
+		resCh, err := workerpool.SubmitWithResult(h.wp, c.Request.Context(), func(ctx context.Context) (res int, err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					h.logger.Error("Handler caught task panic inside SubmitWithResult",
+						"panic", r,
+						"stack", string(debug.Stack()),
+					)
+					err = fmt.Errorf("task panicked: %v", r)
+				}
+			}()
+			// Simulate calculation panic
+			panic("math computation divide by zero panic")
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		res := <-resCh
+		if res.Err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Task failed due to panic",
+				"details": res.Err.Error(),
+			})
+			return
+		}
+		h.OK(c, gin.H{"result": res.Value})
+
+	case "safe-wrapper":
+		// Pattern 2: Using Handler-level SafeSubmit wrapper for contextual panic recovery & stack trace logging
+		err := h.SafeSubmit(c.Request.Context(), "DemoPanicTask", func(ctx context.Context) error {
+			// Simulate nil pointer dereference
+			var ptr *string
+			_ = *ptr
+			return nil
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Task execution failed",
+				"details": err.Error(),
+			})
+			return
+		}
+		h.OK(c, gin.H{"message": "Task completed successfully"})
+
+	default:
+		// Pattern 3: Standard submission, relying on pool level panic handler
+		err := h.wp.Submit(c.Request.Context(), func(ctx context.Context) error {
+			panic("Standard worker panic demo string")
+		})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		h.OK(c, gin.H{
+			"message": "Panic task queued; recovered by worker pool panic handler",
+		})
 	}
+}
 
-	h.OK(c, gin.H{
-		"message": "Panic task queued; worker pool panic recovery will catch it safely without crashing",
-	})
+// SafeSubmit wraps a worker pool task with handler-level panic recovery, stack trace capture, and error mapping.
+func (h *Handler) SafeSubmit(ctx context.Context, taskName string, task workerpool.Task) error {
+	safeTask := func(taskCtx context.Context) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				stack := debug.Stack()
+				h.logger.Error("Handler caught panic in SafeSubmit",
+					"task_name", taskName,
+					"panic", r,
+					"stack", string(stack),
+				)
+				err = fmt.Errorf("task %s panicked: %v", taskName, r)
+			}
+		}()
+		return task(taskCtx)
+	}
+	return h.wp.Submit(ctx, safeTask)
 }
 
 // GetStats returns current metrics for the worker pool.

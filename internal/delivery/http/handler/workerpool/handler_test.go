@@ -83,9 +83,31 @@ func TestWorkerPoolEndpoints(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /api/v1/workerpool/panic-demo", func(t *testing.T) {
+	t.Run("POST /api/v1/workerpool/panic-demo (safe-wrapper)", func(t *testing.T) {
 		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo", nil)
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo?type=safe-wrapper", nil)
+		engine.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected 200 OK, got %d", w.Code)
+		}
+
+		time.Sleep(20 * time.Millisecond)
+	})
+
+	t.Run("POST /api/v1/workerpool/panic-demo (result-panic)", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo?type=result-panic", nil)
+		engine.ServeHTTP(w, req)
+
+		if w.Code != http.StatusInternalServerError {
+			t.Errorf("expected 500 InternalServerError, got %d", w.Code)
+		}
+	})
+
+	t.Run("POST /api/v1/workerpool/panic-demo (standard)", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/workerpool/panic-demo?type=standard", nil)
 		engine.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {

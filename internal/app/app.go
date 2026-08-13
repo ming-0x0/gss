@@ -73,8 +73,16 @@ func New(
 	wp, err := workerpool.New(
 		workerpool.WithWorkers(workers),
 		workerpool.WithQueueSize(queueSize),
+		// Register custom panic handler using WithPanicHandler
 		workerpool.WithPanicHandler(func(r any) {
-			logger.Error("Worker pool panic recovered", "panic", r)
+			logger.Error("⚡ [WithPanicHandler] Worker pool recovered from panic!",
+				"panic_value", r,
+				"timestamp", time.Now().Format(time.RFC3339),
+			)
+			// Ở đây bạn có thể thêm logic tùy chỉnh như:
+			// 1. Gửi thông báo khẩn cấp tới Slack / Telegram Webhook
+			// 2. Đẩy chỉ số panic lên Prometheus / Grafana
+			// 3. Ghi vết incident vào DB / Dead Letter Queue (DLQ)
 		}),
 	)
 	if err != nil {
