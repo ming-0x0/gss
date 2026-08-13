@@ -82,8 +82,7 @@ func (h *Handler) HandleError(c *gin.Context, err error) {
 // BindAndValidate binds the request body and returns validation errors if any.
 func (h *Handler) BindAndValidate(c *gin.Context, req any) bool {
 	if err := c.ShouldBindJSON(req); err != nil {
-		var ve validator.ValidationErrors
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[validator.ValidationErrors](err); ok {
 			details := make([]map[string]string, 0, len(ve))
 			for _, fe := range ve {
 				details = append(details, map[string]string{

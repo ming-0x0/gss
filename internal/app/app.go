@@ -8,13 +8,16 @@ import (
 	"gss/internal/delivery/http/handler"
 	"gss/internal/delivery/http/handler/auth"
 	"gss/internal/delivery/http/handler/health"
+	workerpoolHandler "gss/internal/delivery/http/handler/workerpool"
 	"gss/internal/infrastructure/logger"
 	"gss/internal/infrastructure/orm"
 	"gss/internal/repository"
 	"gss/pkg/database/mysql"
+	"gss/pkg/workerpool"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +26,7 @@ import (
 type App struct {
 	cfg    *configs.Config
 	db     *sql.DB
+	wp     *workerpool.Pool
 	srv    *http.Server
 	logger *logger.Logger
 	wg     sync.WaitGroup
@@ -55,6 +59,28 @@ func New(
 		orm.WithLevel(cfg.Logger.Level),
 	))
 
+	// Initialize Worker Pool
+	workers := cfg.WorkerPool.Workers
+	if workers <= 0 {
+		workers = runtime.NumCPU() * 2
+	}
+	queueSize := cfg.WorkerPool.QueueSize
+	if queueSize <= 0 {
+		queueSize = 500
+	}
+
+	logger.Info("Initializing worker pool...", "workers", workers, "queueSize", queueSize)
+	wp, err := workerpool.New(
+		workerpool.WithWorkers(workers),
+		workerpool.WithQueueSize(queueSize),
+		workerpool.WithPanicHandler(func(r any) {
+			logger.Error("Worker pool panic recovered", "panic", r)
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	repositoryContainer := repository.NewRepositoryContainer(db, logger)
 
 	baseHandler := handler.NewHandler(cfg.Logger.Level)
@@ -62,6 +88,7 @@ func New(
 	handlers := []deliveryHTTP.Handler{
 		auth.NewHandler(baseHandler, repositoryContainer.UserRepository, logger),
 		health.NewHandler(),
+		workerpoolHandler.NewHandler(baseHandler, wp, logger),
 	}
 
 	requestTimeout := cfg.HTTP.RequestTimeout
@@ -87,6 +114,7 @@ func New(
 	return &App{
 		cfg:    cfg,
 		db:     mysqlDB,
+		wp:     wp,
 		logger: logger,
 		srv: &http.Server{
 			Addr:         addr,
@@ -96,6 +124,10 @@ func New(
 			IdleTimeout:  cfg.HTTP.IdleTimeout,
 		},
 	}, nil
+}
+
+func (a *App) WorkerPool() *workerpool.Pool {
+	return a.wp
 }
 
 func (a *App) Run() error {
@@ -113,6 +145,7 @@ func (a *App) start() error {
 		return a.srv.Shutdown(ctx)
 	})
 
+	a.logger.Info("Server listening on " + a.srv.Addr)
 	if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return err
 	}
@@ -136,7 +169,14 @@ func (a *App) stop(
 		defer cancel()
 
 		if err := callback(ctx); err != nil {
-			a.logger.Error("Error during graceful shutdown", "err", err)
+			a.logger.Error("Error during graceful HTTP server shutdown", "err", err)
+		}
+
+		if a.wp != nil {
+			a.logger.Info("Shutting down worker pool...")
+			if err := a.wp.Shutdown(ctx); err != nil {
+				a.logger.Error("Error shutting down worker pool", "err", err)
+			}
 		}
 
 		if a.db != nil {

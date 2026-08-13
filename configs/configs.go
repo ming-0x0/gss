@@ -8,9 +8,10 @@ import (
 )
 
 type Config struct {
-	HTTP   HTTPConfig   `mapstructure:",squash"`
-	Logger LoggerConfig `mapstructure:",squash"`
-	MySQL  MySQLConfig  `mapstructure:",squash"`
+	HTTP       HTTPConfig       `mapstructure:",squash"`
+	Logger     LoggerConfig     `mapstructure:",squash"`
+	MySQL      MySQLConfig      `mapstructure:",squash"`
+	WorkerPool WorkerPoolConfig `mapstructure:",squash"`
 }
 
 var ptr atomic.Pointer[Config]
